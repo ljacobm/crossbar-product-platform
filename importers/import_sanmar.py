@@ -46,7 +46,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 CSV_PATH = os.getenv("SANMAR_CSV", "data/sanmar_shopify.csv")
 
-TEST_MODE = True
+TEST_MODE = False
 TEST_PRODUCT_LIMIT = 10
 
 
@@ -100,7 +100,7 @@ def main():
     for handle, group in df.groupby("Handle"):
         first = group.iloc[0]
         title = normalize_title(first["Title"])
-        slug = normalize_slug(first["Title"])
+        slug = f"{normalize_slug(first['Title'])}-{str(handle).lower()}"
 
         product_rows.append({
             "crossbar_sku": f"CB-{handle}",

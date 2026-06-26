@@ -30,11 +30,29 @@ def upsert_catalog_products(supabase, product_rows):
 
 
 def get_catalog_product_ids_by_sku(supabase):
-    result = supabase.table("catalog_products").select("id,crossbar_sku").execute()
+    all_rows = []
+    page_size = 1000
+    start = 0
+
+    while True:
+        result = (
+            supabase.table("catalog_products")
+            .select("id,crossbar_sku")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+
+        rows = result.data or []
+        all_rows.extend(rows)
+
+        if len(rows) < page_size:
+            break
+
+        start += page_size
 
     return {
         row["crossbar_sku"]: row["id"]
-        for row in result.data
+        for row in all_rows
     }
 
 
@@ -48,16 +66,30 @@ def upsert_supplier_products(supabase, supplier_product_rows):
 
 
 def get_supplier_products_by_style(supabase, supplier_id):
-    result = (
-        supabase.table("supplier_products")
-        .select("id,supplier_style,catalog_product_id")
-        .eq("supplier_id", supplier_id)
-        .execute()
-    )
+    all_rows = []
+    page_size = 1000
+    start = 0
+
+    while True:
+        result = (
+            supabase.table("supplier_products")
+            .select("id,supplier_style,catalog_product_id")
+            .eq("supplier_id", supplier_id)
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+
+        rows = result.data or []
+        all_rows.extend(rows)
+
+        if len(rows) < page_size:
+            break
+
+        start += page_size
 
     return {
         row["supplier_style"]: row
-        for row in result.data
+        for row in all_rows
     }
 
 
