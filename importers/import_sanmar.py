@@ -15,11 +15,21 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 from dotenv import load_dotenv
-from supabase import create_client
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+from services.supabase_client import get_supabase_client
+from services.catalog_service import (
+    get_supplier_id_by_code,
+    upsert_catalog_products,
+    get_catalog_product_ids_by_sku,
+    upsert_supplier_products,
+    get_supplier_products_by_style,
+    upsert_product_variants,
+    upsert_product_images,
+)
 
 from normalization import (
     normalize_category,
@@ -38,7 +48,6 @@ CSV_PATH = os.getenv("SANMAR_CSV", "data/sanmar_shopify.csv")
 
 TEST_MODE = True
 TEST_PRODUCT_LIMIT = 10
-BATCH_SIZE = 500
 
 
 def clean(value):
@@ -67,23 +76,11 @@ def to_bool(value):
     return value in ["true", "1", "yes"]
 
 
-def upsert_batch(supabase, table_name, rows, conflict_column):
-    if not rows:
-        return
-
-    for i in range(0, len(rows), BATCH_SIZE):
-        batch = rows[i:i + BATCH_SIZE]
-        supabase.table(table_name).upsert(
-            batch,
-            on_conflict=conflict_column
-        ).execute()
-
-
 def main():
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env")
 
-    supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    supabase = get_supabase_client()
 
     print("Reading SanMar CSV...")
     df = pd.read_csv(CSV_PATH, dtype=str, encoding="utf-8", low_memory=False)
@@ -96,8 +93,7 @@ def main():
     print(f"Rows to process: {len(df):,}")
     print(f"Unique products: {df['Handle'].nunique():,}")
 
-    supplier = supabase.table("suppliers").select("id").eq("code", "SAN").execute()
-    supplier_id = supplier.data[0]["id"]
+    supplier_id = get_supplier_id_by_code(supabase, "SAN")
 
     # 1. Catalog Products
     product_rows = []
@@ -117,11 +113,10 @@ def main():
         })
 
     print(f"Upserting catalog_products: {len(product_rows):,}")
-    upsert_batch(supabase, "catalog_products", product_rows, "crossbar_sku")
+    upsert_catalog_products(supabase, product_rows)
 
     # Pull products back to get IDs
-    products = supabase.table("catalog_products").select("id,crossbar_sku").execute()
-    product_id_by_sku = {p["crossbar_sku"]: p["id"] for p in products.data}
+    product_id_by_sku = get_catalog_product_ids_by_sku(supabase)
 
     # 2. Supplier Products
     supplier_product_rows = []
@@ -141,15 +136,9 @@ def main():
         })
 
     print(f"Upserting supplier_products: {len(supplier_product_rows):,}")
-    upsert_batch(supabase, "supplier_products", supplier_product_rows, "supplier_id,supplier_style")
+    upsert_supplier_products(supabase, supplier_product_rows)
 
-    supplier_products = supabase.table("supplier_products").select(
-        "id,supplier_style,catalog_product_id"
-    ).eq("supplier_id", supplier_id).execute()
-
-    supplier_product_by_style = {
-        p["supplier_style"]: p for p in supplier_products.data
-    }
+    supplier_product_by_style = get_supplier_products_by_style(supabase, supplier_id)
 
     # 3. Product Variants
     variant_rows = []
@@ -173,7 +162,7 @@ def main():
         })
 
     print(f"Upserting product_variants: {len(variant_rows):,}")
-    upsert_batch(supabase, "product_variants", variant_rows, "supplier_sku")
+    upsert_product_variants(supabase, variant_rows)
 
     # 4. Product Images
     image_map = {}
@@ -202,7 +191,7 @@ def main():
     image_rows = list(image_map.values())
 
     print(f"Upserting product_images: {len(image_rows):,}")
-    upsert_batch(supabase, "product_images", image_rows, "supplier_product_id,color_name,image_url")
+    upsert_product_images(supabase, image_rows)
 
     print("")
     print("Import complete.")
