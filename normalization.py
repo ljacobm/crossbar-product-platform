@@ -82,6 +82,7 @@ import re
 def normalize_title(title):
     """
     Convert supplier titles into cleaner Crossbar catalog names.
+    Removes trademark symbols and trailing supplier style numbers.
     """
 
     if title is None:
@@ -93,17 +94,31 @@ def normalize_title(title):
     title = title.replace("®", "")
     title = title.replace("™", "")
 
-    # Remove multiple spaces
-    title = re.sub(r"\s+", " ", title)
+    # Normalize spaces
+    title = re.sub(r"\s+", " ", title).strip()
 
-    # Remove trailing supplier style numbers
-    # Examples:
-    # ". ST350"
-    # ". PC54"
-    # ". 108084"
-    title = re.sub(r"\.\s*[A-Z0-9\-]+$", "", title)
+    # Remove trailing style numbers:
+    # ". ST350", ". 108084", "- 110172", " 111", " 112"
+    title = re.sub(r"[\.\-\s]+[A-Z]*\d+[A-Z0-9\-]*$", "", title)
 
-    # Remove trailing period
-    title = title.rstrip(".")
+    # Clean leftover punctuation/spaces
+    title = title.strip(" .-")
 
     return title.strip()
+
+import re
+
+def normalize_slug(title):
+    """
+    Create a URL-friendly slug from the display name.
+    """
+
+    title = normalize_title(title)
+
+    title = title.lower()
+
+    title = re.sub(r"[^a-z0-9]+", "-", title)
+
+    title = re.sub(r"-+", "-", title)
+
+    return title.strip("-")
