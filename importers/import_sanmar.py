@@ -26,6 +26,7 @@ from normalization import (
     normalize_size,
     normalize_color,
     normalize_brand,
+    normalize_title,
 )
 
 load_dotenv()
@@ -101,7 +102,7 @@ def main():
     product_rows = []
     for handle, group in df.groupby("Handle"):
         first = group.iloc[0]
-        title = clean(first["Title"])
+        title = normalize_title(first["Title"])
 
         product_rows.append({
             "crossbar_sku": f"CB-{handle}",

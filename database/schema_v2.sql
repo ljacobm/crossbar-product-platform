@@ -87,6 +87,16 @@ create table catalog_settings (
   decoration_methods text,
   price_rule_code text,
   markup_percent numeric(8,2),
+
+  -- Crossbar product knowledge
+  internal_score integer,
+  customer_facing_notes text,
+  internal_notes text,
+  recommended_uses text,
+  fit_notes text,
+  print_notes text,
+  embroidery_notes text,
+
   notes text,
   sort_order integer,
   active boolean default true,

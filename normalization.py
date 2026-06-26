@@ -76,3 +76,34 @@ def normalize_supplier(value):
     if value in ["s&s", "ss", "s&s activewear", "ss activewear"]:
         return "S&S Activewear"
     return value.title()
+
+import re
+
+def normalize_title(title):
+    """
+    Convert supplier titles into cleaner Crossbar catalog names.
+    """
+
+    if title is None:
+        return ""
+
+    title = str(title)
+
+    # Remove trademark symbols
+    title = title.replace("®", "")
+    title = title.replace("™", "")
+
+    # Remove multiple spaces
+    title = re.sub(r"\s+", " ", title)
+
+    # Remove trailing supplier style numbers
+    # Examples:
+    # ". ST350"
+    # ". PC54"
+    # ". 108084"
+    title = re.sub(r"\.\s*[A-Z0-9\-]+$", "", title)
+
+    # Remove trailing period
+    title = title.rstrip(".")
+
+    return title.strip()
