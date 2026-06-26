@@ -1,0 +1,151 @@
+============================================================
+Crossbar Product Platform
+SanMar Catalog Analyzer
+============================================================
+
+CSV File: data/sanmar_shopify.csv
+Run Date: 2026-06-25 20:32:05
+
+--- BASIC INFO ---
+Total Rows: 123,018
+Total Columns: 45
+Unique Products / Handles: 2,996
+Unique Variant SKUs: 123,018
+Unique Brands: 36
+Unique Categories: 15
+Unique Colors: 2,752
+Unique Sizes: 205
+
+--- DATA QUALITY ---
+Missing Required Columns: None
+Duplicate Variant SKUs: 0
+Rows Missing Images: 0
+Rows Missing Descriptions: 0
+
+--- TOP BRANDS ---
+Vendor
+Sport-Tek             19693
+Port Authority        18981
+Port & Co             15722
+District              10186
+Gildan                 8080
+Bella + Canvas         6771
+Jerzees                4636
+Next Level Apparel     3928
+Nike                   3709
+OGIO                   3431
+Carhartt               2527
+CornerStone            2518
+Comfort Colors         2240
+New Era                2224
+Stanley/Stella         2222
+Mercer+Mettle          1958
+Eddie Bauer            1746
+Wink                   1494
+AllMade                1492
+Brooks Brothers        1419
+
+--- TOP CATEGORIES ---
+Type
+T-Shirts               42978
+Sweatshirts/Fleece     25054
+Polos/Knits            20785
+Activewear             11117
+Outerwear              10678
+Caps                    2654
+Woven Shirts            2042
+Women's                 1875
+Personal Protection     1763
+Workwear                1406
+Bags                    1006
+Infant & Toddler         740
+Accessories              486
+Tall                     350
+Youth                     84
+
+--- TOP CROSSBAR CATEGORIES ---
+Crossbar Category
+T-Shirts                42978
+Sweatshirts & Fleece    25054
+Polos                   20785
+Activewear              11117
+Outerwear               10678
+Hats                     2654
+Button-Ups               2042
+Women's                  1875
+Personal Protection      1763
+Workwear                 1406
+Bags                     1006
+Infant & Toddler          740
+Accessories               486
+Tall                      350
+Youth                      84
+
+--- TOP CROSSBAR SIZES ---
+Crossbar Size
+L             15675
+M             15671
+S             15654
+XL            15632
+2XL           13799
+3XL           12850
+XS            11070
+4XL           10325
+One Size       3136
+5XL            1804
+6XL            1179
+Large Tall      518
+XL Tall         518
+2XL Tall        518
+3XL Tall        494
+4XL Tall        468
+S/M             276
+L/XL            276
+M/L             256
+XXS             224
+4T              117
+2T              116
+3T              116
+2XS             102
+06M              58
+12M              58
+18M              58
+5T               50
+24M              38
+5/6T             34
+
+--- TOP SIZES ---
+Option2 Value
+L       15675
+M       15671
+S       15654
+XL      15632
+3XL     12850
+2XL     11636
+XS      11070
+4XL     10325
+OSFA     3136
+XXL      2163
+5XL      1804
+6XL      1179
+LT        518
+XLT       518
+2XLT      518
+3XLT      494
+4XLT      468
+S/M       276
+L/XL      276
+M/L       256
+XXS       224
+4T        117
+2T        116
+3T        116
+2XS       102
+06M        58
+12M        58
+18M        58
+5T         50
+24M        38
+
+--- IMPORT STATUS ---
+READY TO IMPORT
