@@ -22,9 +22,22 @@ create table suppliers (
 create table catalog_products (
   id bigserial primary key,
   crossbar_sku text unique,
+
+  -- Customer-facing information
   display_name text not null,
+  product_slug text unique,
   description_html text,
   crossbar_category text,
+
+  -- Product characteristics
+  brand_display text,
+  material text,
+  fabric text,
+  fit text,
+  gender text,
+  age_group text,
+  weight_class text,
+
   active boolean default true,
   created_at timestamp default now(),
   updated_at timestamp default now()
@@ -81,6 +94,7 @@ create table catalog_settings (
   id bigserial primary key,
   catalog_product_id bigint references catalog_products(id) on delete cascade unique,
   show_on_website boolean default false,
+  workflow_status text default 'Imported',
   featured boolean default false,
   recommended boolean default false,
   website_category text,
