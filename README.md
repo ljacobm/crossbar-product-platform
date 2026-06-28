@@ -1,30 +1,85 @@
 # Crossbar Product Platform
 
-## Overview
+## Vision
 
-The Crossbar Product Platform is a Product Information Management (PIM) system designed specifically for Crossbar Athletics.
+The Crossbar Product Platform is the central product management system for Crossbar Athletics.
 
-Its purpose is to centralize supplier product information, customer catalog management, Shopify integration, team store management, quote requests, and future production workflows into one platform.
+Its purpose is to maintain one master catalog that powers:
 
-The long-term goal is to make this the single source of truth for every product offered by Crossbar Athletics.
+* Crossbar website catalog
+* Shopify products
+* Team stores
+* Customer quote requests
+* Internal production workflows
+* Future customer dashboards
+
+The long-term goal is to maintain product information in one place while automatically distributing that information throughout the business.
 
 ---
 
-# Technology Stack
+# Current Project Status
 
-* Python
-* Supabase (PostgreSQL)
-* Google Sheets
-* Shopify API
-* Git / GitHub
-* VS Code
+## ✅ Completed
+
+### Project Foundation
+
+* GitHub repository created
+* Modular Python project structure
+* Environment configuration
+* Supabase project connected
+
+### Database
+
+Designed and implemented the V2 database schema.
+
+Current tables:
+
+* suppliers
+* catalog_products
+* supplier_products
+* product_variants
+* product_images
+* catalog_settings
+* price_rules
+* quote_requests
+* quote_request_items
+
+### SanMar Import
+
+Completed full SanMar catalog import.
+
+Current database contents:
+
+* 2,996 Products
+* 123,018 Variants
+* 20,116 Product Images
+
+### Normalization
+
+Implemented normalization for:
+
+* Product Titles
+* Categories
+* Sizes
+* Colors
+* Brands
+* URL Slugs
+
+### Service Layer
+
+Created reusable services.
+
+Current services:
+
+* supabase_client.py
+* catalog_service.py
 
 ---
 
 # Current Project Structure
 
-```
-SUPABASECATALOG/
+```text
+Crossbar Product Platform
 │
 ├── analyze/
 │   └── analyze_sanmar_csv.py
@@ -32,124 +87,164 @@ SUPABASECATALOG/
 ├── data/
 │   └── sanmar_shopify.csv
 │
-├── output/
+├── database/
+│   └── schema_v2.sql
 │
-├── .env
-├── .gitignore
+├── importers/
+│   └── import_sanmar.py
+│
+├── services/
+│   ├── __init__.py
+│   ├── supabase_client.py
+│   └── catalog_service.py
+│
 ├── normalization.py
+├── requirements.txt
 └── README.md
 ```
 
 ---
 
-# Current Database Tables
+# Product Architecture
 
-Current Supabase tables:
+```text
+Supplier
+      │
+      ▼
+Supplier Product
+      │
+      ▼
+Catalog Product
+      │
+      ▼
+Variants
+      │
+      ▼
+Images
+```
 
-* supplier_products
-* supplier_colors
-* supplier_variants
-* approved_catalog
-* quote_requests
+Crossbar SKU Format:
 
-**Note:** These tables are considered Version 1 and may be redesigned before importing production data.
+```
+CB-ST350
+CB-F244
+CB-112
+```
 
----
+Customer URL Slugs:
 
-# Milestones
-
-## ✅ Milestone 0 — Development Environment
-
-Completed
-
-* Supabase project created
-* Git repository initialized
-* GitHub repository connected
-* VS Code project configured
-* SanMar FTP catalog downloaded
-* CSV analyzer created
-* Normalization layer created
-
----
-
-## 🔄 Milestone 1 — Supplier Data Engine
-
-In Progress
-
-Goals:
-
-* Finalize Product Information Model (PIM)
-* Design normalized database schema
-* Build SanMar importer
-* Populate Supabase
-* Validate imported data
+```
+sport-tek-posicharge-competitor-tee-st350
+nike-dri-fit-micro-pique-polo-746099
+```
 
 ---
 
-## Planned Milestones
+# Planned Development Roadmap
 
-### Milestone 2
+## Phase 1 — Product Platform ✅
 
-Master Catalog Management
+* Database
+* Product normalization
+* SanMar import
+* Service layer
 
-* Google Sheets synchronization
-* Product approval workflow
-* Pricing rules
-* Product categories
-
-### Milestone 3
-
-Website Catalog
-
-* Public searchable catalog
-* Product detail pages
-* Filtering
-* Images
-* Product recommendations
-
-### Milestone 4
-
-Quote & Mockup Requests
-
-* Logo upload
-* Roster upload
-* Quantity builder
-* Quote request management
-
-### Milestone 5
-
-Shopify Integration
-
-* Shopify synchronization
-* Draft orders
-* Payment links
-* Team store creation
-
-### Milestone 6
-
-Team Dashboard
-
-* Team catalog management
-* Sales reporting
-* Fundraiser tracking
-* Jersey roster management
-* Store management
+Status: COMPLETE
 
 ---
 
-# Design Philosophy
+## Phase 2 — Catalog Manager
 
-The Crossbar Product Platform is designed around a single source of truth.
+Build an internal web application to manage products.
 
-Supplier data is imported into Crossbar's own product database rather than being used directly.
+Features:
 
-This allows multiple suppliers (SanMar, S&S Activewear, Augusta, etc.) to power the same catalog while keeping Crossbar's internal product structure consistent.
+* Search products
+* Edit customer-facing names
+* Edit descriptions
+* Set pricing rules
+* Manage categories
+* Enable/disable products
+* Product scoring
+* Decoration recommendations
+* Internal notes
 
 ---
 
-# Next Session
+## Phase 3 — Shopify Integration
 
-1. Redesign the Product Information Model (PIM)
-2. Create the permanent Supabase schema
-3. Build the SanMar importer
-4. Import the first supplier catalog into Supabase
+Automatically publish approved products to Shopify.
+
+Features:
+
+* Create products
+* Update products
+* Sync pricing
+* Sync images
+* Sync inventory settings
+
+---
+
+## Phase 4 — Quote System
+
+Allow customers to request quotes.
+
+Features:
+
+* Product selection
+* Color selection
+* Size quantities
+* Team rosters
+* Logo uploads
+* Mockup requests
+* Quote approval
+
+---
+
+## Phase 5 — Team Store Manager
+
+Allow organizations to manage their own stores.
+
+Features:
+
+* Enable/disable products
+* Choose logos
+* View sales
+* Team roster management
+* Order tracking
+* Store analytics
+
+---
+
+## Phase 6 — Customer Dashboard
+
+Customer portal.
+
+Features:
+
+* Team stores
+* Quotes
+* Orders
+* Sales reports
+* Artwork
+* Rosters
+* Product catalog
+
+---
+
+# Future Suppliers
+
+Planned integrations:
+
+* S&S Activewear
+* Alphabroder
+* Augusta Sportswear
+* Holloway
+* Charles River
+* Outdoor Cap
+
+---
+
+# Long-Term Goal
+
+Build a centralized operating system for Crossbar Athletics where all supplier data, product information, pricing, customer catalogs, Shopify stores, quotes, production data, and team stores are managed from one platform.
