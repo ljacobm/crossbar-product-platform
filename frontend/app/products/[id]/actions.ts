@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { STORAGE_BUCKET } from "@/lib/imageOptions";
 
 export type ActionState = {
   error: string | null;
@@ -92,6 +93,32 @@ export async function deleteProductPermanently(
       error:
         "This product is referenced by a bundle and cannot be deleted. Remove the bundle reference first.",
     };
+  }
+
+  const { data: uploadedImages, error: imagesError } = await supabaseAdmin
+    .from("product_images")
+    .select("storage_path")
+    .eq("catalog_product_id", catalogProductId)
+    .not("storage_path", "is", null);
+
+  if (imagesError) {
+    return { error: "Could not verify uploaded images. Please try again." };
+  }
+
+  const storagePaths = (uploadedImages ?? [])
+    .map((row) => row.storage_path)
+    .filter((path): path is string => Boolean(path));
+
+  if (storagePaths.length > 0) {
+    const { error: storageError } = await supabaseAdmin.storage
+      .from(STORAGE_BUCKET)
+      .remove(storagePaths);
+
+    if (storageError) {
+      return {
+        error: "Failed to remove uploaded product images from storage. Please try again.",
+      };
+    }
   }
 
   const { error: deleteError } = await supabaseAdmin

@@ -18,6 +18,9 @@ type Image = {
   id: number;
   image_url: string;
   color_name: string | null;
+  alt_text?: string | null;
+  caption?: string | null;
+  image_type?: string;
 };
 
 type Variant = {
@@ -79,6 +82,7 @@ export default function ProductHeroWorkspace({
   );
 
   const [selectedColor, setSelectedColor] = useState(colors[0] || "");
+  const [selectedImageId, setSelectedImageId] = useState<number | null>(null);
   const [copyStatus, setCopyStatus] = useState("Copy Product Image");
 
   const selectedColorVariants = variants
@@ -86,7 +90,12 @@ export default function ProductHeroWorkspace({
     .sort(sortSizes);
 
   const selectedImage =
-    images.find((img) => img.color_name === selectedColor) || images[0];
+    (selectedImageId != null ? images.find((img) => img.id === selectedImageId) : null) ||
+    images.find((img) => img.color_name === selectedColor) ||
+    images[0];
+
+  const hasColorVariants = images.some((img) => img.color_name);
+  const heroAltText = selectedImage?.alt_text || product.display_name;
 
   async function copyImageToClipboard() {
     if (!selectedImage) return;
@@ -109,13 +118,17 @@ export default function ProductHeroWorkspace({
           {selectedImage ? (
             <img
               src={selectedImage.image_url}
-              alt={product.display_name}
+              alt={heroAltText}
               className="h-full w-full rounded-2xl object-contain p-3"
             />
           ) : (
             <span className="text-6xl text-slate-300">🖼️</span>
           )}
         </div>
+
+        {selectedImage?.caption && (
+          <p className="mt-2 text-center text-xs text-slate-500">{selectedImage.caption}</p>
+        )}
 
         {selectedImage && (
           <button
@@ -129,25 +142,26 @@ export default function ProductHeroWorkspace({
         {product.source_type !== "bundle" && (
           <div className="mt-4">
             <div className="mb-2 text-sm font-semibold text-slate-700">
-              All Colors ({images.length})
+              {hasColorVariants ? `All Colors (${images.length})` : `Photos (${images.length})`}
             </div>
 
             <div className="grid max-h-[360px] grid-cols-4 gap-3 overflow-y-auto pr-2">
               {images.map((image) => (
                 <button
                   key={image.id}
-                  onClick={() =>
-                    image.color_name && setSelectedColor(image.color_name)
-                  }
+                  onClick={() => {
+                    setSelectedImageId(image.id);
+                    if (image.color_name) setSelectedColor(image.color_name);
+                  }}
                   className={`h-16 w-16 rounded-lg border bg-white p-1 transition hover:bg-slate-50 ${
-                    image.color_name === selectedColor
+                    image.id === selectedImage?.id
                       ? "border-[#860132] ring-2 ring-[#860132]/20"
                       : "border-slate-200"
                   }`}
                 >
                   <img
                     src={image.image_url}
-                    alt={image.color_name || product.display_name}
+                    alt={image.alt_text || image.color_name || product.display_name}
                     className="h-full w-full object-contain"
                   />
                 </button>
@@ -205,6 +219,14 @@ export default function ProductHeroWorkspace({
             >
               Edit Product
             </Link>
+            {(product.source_type === "crossbar" || product.source_type === "bundle") && (
+              <Link
+                href={`/products/${product.id}/images`}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
+              >
+                {images.length === 0 ? "Add Product Images" : "Manage Images"}
+              </Link>
+            )}
             <button className="rounded-lg bg-[#860132] px-4 py-2 text-sm text-white">
               Generate Mockup
             </button>

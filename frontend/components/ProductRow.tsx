@@ -12,9 +12,21 @@ type Product = {
     id: number;
     image_url: string;
     color_name: string | null;
+    image_type?: string;
+    active?: boolean;
     sort_order: number | null;
   }[];
 };
+
+function selectThumbnail(images: Product["product_images"]) {
+  const active = images.filter((image) => image.active !== false);
+  const hero = active.find((image) => image.image_type === "hero");
+  if (hero) return hero;
+
+  return [...active].sort(
+    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id
+  )[0];
+}
 
 function StatusBadge({
   active,
@@ -47,6 +59,8 @@ function StatusBadge({
 }
 
 export default function ProductRow({ product }: { product: Product }) {
+  const thumbnail = selectThumbnail(product.product_images ?? []);
+
   return (
     <tr
       className="cursor-pointer transition hover:bg-slate-50"
@@ -57,9 +71,9 @@ export default function ProductRow({ product }: { product: Product }) {
       <td className="px-4 py-4">
         <div className="flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-200">
-            {product.product_images?.[0]?.image_url ? (
+            {thumbnail?.image_url ? (
               <img
-                src={product.product_images[0].image_url}
+                src={thumbnail.image_url}
                 alt={product.display_name}
                 className="h-full w-full object-contain p-1"
               />

@@ -17,12 +17,6 @@ export default async function ProductDetailPage({
     .from("catalog_products")
     .select(`
       *,
-      product_images (
-        id,
-        image_url,
-        color_name,
-        sort_order
-      ),
       product_variants (
         id,
         color_name,
@@ -35,8 +29,33 @@ export default async function ProductDetailPage({
     .eq("id", id)
     .single();
 
-  const images = product?.product_images ?? [];
-  const heroImage = images[0];
+  const { data: imagesRaw } = await supabase
+    .from("product_images")
+    .select("id, image_url, image_type, alt_text, caption, color_name, sort_order")
+    .eq("catalog_product_id", id)
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("id", { ascending: true });
+
+  // Hero-first, then sort_order, then id — this also makes images[0] the
+  // correct hero-or-fallback image for the hero display below.
+  const images = ((imagesRaw ?? []) as {
+    id: number;
+    image_url: string;
+    image_type: string;
+    alt_text: string | null;
+    caption: string | null;
+    color_name: string | null;
+    sort_order: number | null;
+  }[])
+    .slice()
+    .sort((a, b) => {
+      const aHero = a.image_type === "hero" ? 0 : 1;
+      const bHero = b.image_type === "hero" ? 0 : 1;
+      if (aHero !== bHero) return aHero - bHero;
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id;
+    });
+
   const variants = product?.product_variants ?? [];
 
   let bundleItems: {

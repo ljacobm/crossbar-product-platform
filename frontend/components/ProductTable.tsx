@@ -27,6 +27,8 @@ export default async function ProductTable({
       id,
       image_url,
       color_name,
+      image_type,
+      active,
       sort_order
     )
     `,
