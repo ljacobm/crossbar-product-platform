@@ -1,5 +1,7 @@
 -- Crossbar Product Platform - Schema V2
 
+drop table if exists product_bundle_items cascade;
+drop table if exists crossbar_product_data cascade;
 drop table if exists quote_request_items cascade;
 drop table if exists quote_requests cascade;
 drop table if exists price_rules cascade;
@@ -22,6 +24,9 @@ create table suppliers (
 create table catalog_products (
   id bigserial primary key,
   crossbar_sku text unique,
+
+  -- Product source
+  source_type text not null default 'supplier',
 
   -- Customer-facing information
   display_name text not null,
@@ -56,6 +61,30 @@ create table supplier_products (
   created_at timestamp default now(),
   updated_at timestamp default now(),
   unique (supplier_id, supplier_style)
+);
+
+create table crossbar_product_data (
+  id bigserial primary key,
+  catalog_product_id bigint references catalog_products(id) on delete cascade unique,
+  product_family text,
+  production_method text,
+  base_template text,
+  default_size_range text,
+  product_notes text,
+  production_notes text,
+  active boolean default true,
+  created_at timestamp default now(),
+  updated_at timestamp default now()
+);
+
+create table product_bundle_items (
+  id bigserial primary key,
+  bundle_catalog_product_id bigint references catalog_products(id) on delete cascade,
+  child_catalog_product_id bigint references catalog_products(id),
+  quantity integer default 1,
+  required boolean default true,
+  sort_order integer default 0,
+  created_at timestamp default now()
 );
 
 create table product_variants (
@@ -162,8 +191,11 @@ insert into suppliers (name, code)
 values ('SanMar', 'SAN')
 on conflict (code) do nothing;
 
+create index idx_catalog_products_source_type on catalog_products(source_type);
 create index idx_supplier_products_style on supplier_products(supplier_style);
 create index idx_supplier_products_catalog_product on supplier_products(catalog_product_id);
+create index idx_product_bundle_items_bundle on product_bundle_items(bundle_catalog_product_id);
+create index idx_product_bundle_items_child on product_bundle_items(child_catalog_product_id);
 create index idx_product_variants_catalog_product on product_variants(catalog_product_id);
 create index idx_product_variants_supplier_product on product_variants(supplier_product_id);
 create index idx_product_variants_color_size on product_variants(color_name, size_name);

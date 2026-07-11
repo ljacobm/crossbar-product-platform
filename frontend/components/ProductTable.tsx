@@ -1,11 +1,35 @@
 import { supabase } from "@/lib/supabase";
 import ProductRow, { Product } from "./ProductRow";
 
-export default async function ProductTable({ query = "" }: { query?: string }) {
+export default async function ProductTable({
+  query = "",
+  brand = "",
+  category = "",
+  status = "active",
+}: {
+  query?: string;
+  brand?: string;
+  category?: string;
+  status?: string;
+}) {
   let request = supabase
   .from("catalog_products")
   .select(
-    "id, crossbar_sku, display_name, crossbar_category, brand_display, active",
+    `
+    id,
+    crossbar_sku,
+    display_name,
+    crossbar_category,
+    brand_display,
+    active,
+    source_type,
+    product_images (
+      id,
+      image_url,
+      color_name,
+      sort_order
+    )
+    `,
     { count: "exact" }
   )
   .order("display_name", { ascending: true })
@@ -15,6 +39,20 @@ if (query) {
   request = request.or(
     `display_name.ilike.%${query}%,crossbar_sku.ilike.%${query}%,brand_display.ilike.%${query}%,crossbar_category.ilike.%${query}%`
   );
+}
+
+if (brand) {
+  request = request.eq("brand_display", brand);
+}
+
+if (category) {
+  request = request.eq("crossbar_category", category);
+}
+
+if (status === "active") {
+  request = request.eq("active", true);
+} else if (status === "archived") {
+  request = request.eq("active", false);
 }
 
 const { data: products, error, count } = await request;

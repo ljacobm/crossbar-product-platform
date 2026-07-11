@@ -248,3 +248,241 @@ Planned integrations:
 # Long-Term Goal
 
 Build a centralized operating system for Crossbar Athletics where all supplier data, product information, pricing, customer catalogs, Shopify stores, quotes, production data, and team stores are managed from one platform.
+
+
+# Crossbar Product Platform
+
+Internal product management platform for Crossbar Athletics.
+
+The goal of this project is to replace spreadsheets with a centralized product database that powers:
+
+- Product Catalog
+- Team Store Builder
+- Shopify Publishing
+- Mockup Generation
+- Decoration Management
+- Pricing
+- AI Product Creation
+
+---
+
+# Tech Stack
+
+Frontend
+- Next.js 15
+- React
+- TypeScript
+- Tailwind CSS
+
+Backend
+- Supabase
+- PostgreSQL
+- Row Level Security
+
+Future
+- Shopify Admin API
+- OpenAI API
+- Supabase Storage
+- Cloudflare CDN
+
+---
+
+# Current Features
+
+## Dashboard
+
+- Summary statistics
+- Product search
+- Product table
+- Supplier overview
+
+## Product List
+
+- Search by:
+  - Product Name
+  - SKU
+  - Brand
+  - Category
+
+- Clean table layout
+- Image thumbnails
+- Status badges
+- Product detail navigation
+
+## Product Detail
+
+- Hero image
+- Image gallery
+- Dynamic color selection
+- Dynamic image switching
+- Live inventory
+- Supplier pricing
+- Supplier SKU
+- Overview section
+
+---
+
+# Database
+
+Primary tables
+
+catalog_products
+product_variants
+product_images
+suppliers
+
+Relationships
+
+catalog_products
+    ├── product_images
+    └── product_variants
+
+---
+
+# Project Structure
+
+frontend/
+
+app/
+    page.tsx
+    products/[id]/page.tsx
+
+components/
+    Sidebar.tsx
+    SummaryCards.tsx
+    SearchBar.tsx
+    ProductTable.tsx
+    ProductRow.tsx
+    ProductHeroWorkspace.tsx
+    ProductColorSelector.tsx
+    ProductVariants.tsx
+    PageHeader.tsx
+
+lib/
+    supabase.ts
+
+---
+
+# Environment
+
+Create:
+
+frontend/.env.local
+
+Required variables
+
+NEXT_PUBLIC_SUPABASE_URL=
+
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+
+---
+
+# Running
+
+Install
+
+npm install
+
+Development
+
+npm run dev
+
+Build
+
+npm run build
+
+---
+
+# Current Progress
+
+✅ Dashboard
+
+✅ Product Search
+
+✅ Product List
+
+✅ Product Detail
+
+✅ Image Gallery
+
+✅ Dynamic Color Selection
+
+✅ Inventory Display
+
+✅ Supplier Pricing
+
+---
+
+# Next Milestones
+
+## Product Management
+
+- Edit Product
+- Add Product
+- Delete Product
+
+## Images
+
+- Copy Image
+- Download Image
+- Upload Crossbar Images
+- Replace Supplier Images
+
+## Pricing
+
+- Selling Price
+- Decoration Cost
+- Margin Calculator
+
+## Decoration
+
+- Embroidery
+- DTF
+- Screen Print
+
+## Website
+
+- SEO
+- Collections
+- Tags
+- Visibility
+
+## Mockups
+
+- Generate Mockups
+- Store Mockups
+- Publish Mockups
+
+## Shopify
+
+- Product Sync
+- Inventory Sync
+- Publish Collections
+
+## AI
+
+- AI Product Descriptions
+- AI Mockups
+- AI Logo Placement
+- AI Product Creation
+
+---
+
+# Long Term Vision
+
+The Crossbar Product Platform will become the central operating system for apparel production.
+
+Instead of managing products across spreadsheets, Shopify, supplier websites, and design files, every product will exist in one place.
+
+This platform will manage:
+
+- Supplier data
+- Inventory
+- Images
+- Pricing
+- Decoration
+- Mockups
+- Website publishing
+- AI-assisted product creation
+
+with Shopify serving only as the storefront while this application becomes the single source of truth.

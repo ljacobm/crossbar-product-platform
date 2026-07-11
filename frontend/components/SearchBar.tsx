@@ -25,7 +25,7 @@ export default function SearchBar({
       params.delete("q");
     }
 
-    router.push(`/?${params.toString()}`);
+    router.push(`/products?${params.toString()}`);
   }
 
   return (

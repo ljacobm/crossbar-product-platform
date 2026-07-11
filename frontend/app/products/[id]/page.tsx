@@ -1,8 +1,5 @@
 import Sidebar from "@/components/Sidebar";
-import PageHeader from "@/components/PageHeader";
 import { supabase } from "@/lib/supabase";
-import ProductVariants from "@/components/ProductVariants";
-import ProductColorSelector from "@/components/ProductColorSelector";
 import ProductHeroWorkspace from "@/components/ProductHeroWorkspace";
 
 export default async function ProductDetailPage({
@@ -59,12 +56,29 @@ export default async function ProductDetailPage({
         <Sidebar />
 
         <section className="flex-1">
-          <PageHeader />
+          <header className="border-b border-slate-200 bg-white px-8 py-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">
+                  Product Workspace
+                </p>
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {product.display_name}
+                </h2>
+              </div>
+            </div>
+          </header>
 
           <div className="p-8">
-            <a href="/" className="text-sm text-[#860132]">
-              ← Back to Products
-            </a>
+            <div className="mb-4">
+              <a
+                href="/products"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                <span className="text-lg">←</span>
+                <span>Products Search</span>
+              </a>
+            </div>
 
             <ProductHeroWorkspace
               product={product}
@@ -73,10 +87,64 @@ export default async function ProductDetailPage({
             />
 
             <div className="mt-6 rounded-xl bg-white p-6 shadow">
-              <h2 className="text-lg font-semibold">Overview</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                Product details, description, website settings, pricing, decoration notes, and internal Crossbar knowledge will live here.
-              </p>
+              <h2 className="text-lg font-semibold">Product Information</h2>
+
+              <div className="mt-5 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Description
+                  </h3>
+
+                  <div
+                    className="mt-2 text-sm leading-6 text-slate-700"
+                    dangerouslySetInnerHTML={{
+                      __html:
+                        product.description_html ||
+                        "No product description available yet.",
+                    }}
+                  />
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Details
+                  </h3>
+
+                  <dl className="mt-4 space-y-3 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-slate-500">Brand</dt>
+                      <dd className="font-medium text-slate-900">
+                        {product.brand_display || "-"}
+                      </dd>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-slate-500">Category</dt>
+                      <dd className="font-medium text-slate-900">
+                        {product.crossbar_category || "-"}
+                      </dd>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-slate-500">Crossbar SKU</dt>
+                      <dd className="font-mono text-slate-900">
+                        {product.crossbar_sku || "-"}
+                      </dd>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-slate-500">Status</dt>
+                      <dd className="font-medium text-blue-700">
+                        {!product.active
+                          ? "Archived"
+                          : product.source_type === "crossbar"
+                          ? "Crossbar Product"
+                          : "Imported"}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
             </div>
 
           </div>
