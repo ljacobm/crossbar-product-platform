@@ -47,12 +47,17 @@ export default function NewProductPage() {
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 opacity-70">
-                  <h3 className="text-lg font-semibold">Bundle / Package</h3>
+                <a
+                  href="/products/new/bundle"
+                  className="rounded-xl border-2 border-[#860132] bg-[#860132]/5 p-5 hover:bg-[#860132]/10"
+                >
+                  <h3 className="text-lg font-semibold text-[#860132]">
+                    Bundle / Package
+                  </h3>
                   <p className="mt-2 text-sm text-slate-600">
-                    Coming soon. Build a package from multiple products.
+                    Create a player package, coach package, spirit pack, or other product made from multiple catalog products.
                   </p>
-                </div>
+                </a>
               </div>
             </div>
           </div>

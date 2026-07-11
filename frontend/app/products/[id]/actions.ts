@@ -80,9 +80,7 @@ export async function deleteProductPermanently(
   const { data: bundleRefs, error: bundleError } = await supabaseAdmin
     .from("product_bundle_items")
     .select("id")
-    .or(
-      `bundle_catalog_product_id.eq.${catalogProductId},child_catalog_product_id.eq.${catalogProductId}`
-    )
+    .eq("child_catalog_product_id", catalogProductId)
     .limit(1);
 
   if (bundleError) {

@@ -1,5 +1,7 @@
 -- Crossbar Product Platform - Schema V2
 
+drop table if exists product_resource_links cascade;
+drop table if exists knowledge_resources cascade;
 drop table if exists product_bundle_items cascade;
 drop table if exists crossbar_product_data cascade;
 drop table if exists quote_request_items cascade;
@@ -85,6 +87,38 @@ create table product_bundle_items (
   required boolean default true,
   sort_order integer default 0,
   created_at timestamp default now()
+);
+
+create table knowledge_resources (
+  id bigserial primary key,
+  resource_type text not null,
+  title text not null,
+  summary text,
+  content_html text,
+  version text,
+  status text default 'Draft',
+  file_url text,
+  external_url text,
+  slug text unique,
+  updated_by text,
+  estimated_minutes integer,
+  department text,
+  owner_name text,
+  active boolean default true,
+  created_at timestamp default now(),
+  updated_at timestamp default now()
+);
+
+create table product_resource_links (
+  id bigserial primary key,
+  catalog_product_id bigint references catalog_products(id) on delete cascade,
+  resource_id bigint references knowledge_resources(id) on delete cascade,
+  relationship_type text,
+  required boolean default false,
+  notes text,
+  sort_order integer default 0,
+  created_at timestamp default now(),
+  unique (catalog_product_id, resource_id)
 );
 
 create table product_variants (
@@ -201,3 +235,11 @@ create index idx_product_variants_supplier_product on product_variants(supplier_
 create index idx_product_variants_color_size on product_variants(color_name, size_name);
 create index idx_product_images_catalog_product on product_images(catalog_product_id);
 create index idx_catalog_settings_show on catalog_settings(show_on_website);
+create index idx_knowledge_resources_resource_type on knowledge_resources(resource_type);
+create index idx_knowledge_resources_status on knowledge_resources(status);
+create index idx_knowledge_resources_slug on knowledge_resources(slug);
+create index idx_knowledge_resources_department on knowledge_resources(department);
+create index idx_knowledge_resources_active on knowledge_resources(active);
+create index idx_knowledge_resources_updated_at on knowledge_resources(updated_at);
+create index idx_product_resource_links_catalog_product on product_resource_links(catalog_product_id);
+create index idx_product_resource_links_resource on product_resource_links(resource_id);

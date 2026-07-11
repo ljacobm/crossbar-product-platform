@@ -64,7 +64,9 @@ export default function ProductRow({ product }: { product: Product }) {
                 className="h-full w-full object-contain p-1"
               />
             ) : (
-              <span className="text-lg text-slate-400">🖼️</span>
+              <span className="text-lg text-slate-400">
+                {product.source_type === "bundle" ? "📦" : "🖼️"}
+              </span>
             )}
           </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import ProductActionsMenu from "@/components/ProductActionsMenu";
 
 type Product = {
@@ -125,33 +126,35 @@ export default function ProductHeroWorkspace({
           </button>
         )}
 
-        <div className="mt-4">
-          <div className="mb-2 text-sm font-semibold text-slate-700">
-            All Colors ({images.length})
-          </div>
+        {product.source_type !== "bundle" && (
+          <div className="mt-4">
+            <div className="mb-2 text-sm font-semibold text-slate-700">
+              All Colors ({images.length})
+            </div>
 
-          <div className="grid max-h-[360px] grid-cols-4 gap-3 overflow-y-auto pr-2">
-            {images.map((image) => (
-              <button
-                key={image.id}
-                onClick={() =>
-                  image.color_name && setSelectedColor(image.color_name)
-                }
-                className={`h-16 w-16 rounded-lg border bg-white p-1 transition hover:bg-slate-50 ${
-                  image.color_name === selectedColor
-                    ? "border-[#860132] ring-2 ring-[#860132]/20"
-                    : "border-slate-200"
-                }`}
-              >
-                <img
-                  src={image.image_url}
-                  alt={image.color_name || product.display_name}
-                  className="h-full w-full object-contain"
-                />
-              </button>
-            ))}
+            <div className="grid max-h-[360px] grid-cols-4 gap-3 overflow-y-auto pr-2">
+              {images.map((image) => (
+                <button
+                  key={image.id}
+                  onClick={() =>
+                    image.color_name && setSelectedColor(image.color_name)
+                  }
+                  className={`h-16 w-16 rounded-lg border bg-white p-1 transition hover:bg-slate-50 ${
+                    image.color_name === selectedColor
+                      ? "border-[#860132] ring-2 ring-[#860132]/20"
+                      : "border-slate-200"
+                  }`}
+                >
+                  <img
+                    src={image.image_url}
+                    alt={image.color_name || product.display_name}
+                    className="h-full w-full object-contain"
+                  />
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -172,8 +175,18 @@ export default function ProductHeroWorkspace({
               <span className="rounded-full bg-slate-100 px-3 py-1 text-sm">
                 {product.crossbar_category}
               </span>
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700">
-                {product.source_type === "crossbar"
+              <span
+                className={`rounded-full px-3 py-1 text-sm ${
+                  product.source_type === "bundle"
+                    ? "bg-amber-50 text-amber-700"
+                    : product.source_type === "crossbar"
+                    ? "bg-purple-50 text-purple-700"
+                    : "bg-blue-50 text-blue-700"
+                }`}
+              >
+                {product.source_type === "bundle"
+                  ? "Bundle"
+                  : product.source_type === "crossbar"
                   ? "Crossbar Product"
                   : "Imported"}
               </span>
@@ -186,9 +199,12 @@ export default function ProductHeroWorkspace({
           </div>
 
           <div className="flex gap-2">
-            <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm">
+            <Link
+              href={`/products/${product.id}/edit`}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
+            >
               Edit Product
-            </button>
+            </Link>
             <button className="rounded-lg bg-[#860132] px-4 py-2 text-sm text-white">
               Generate Mockup
             </button>
@@ -201,84 +217,88 @@ export default function ProductHeroWorkspace({
           </div>
         </div>
 
-        <div className="mt-8">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Colors
-          </h3>
+        {product.source_type !== "bundle" && (
+          <div className="mt-8">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Colors
+            </h3>
 
-          {colors.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {colors.map((color) => (
-                <button
-                  key={color}
-                  onClick={() => setSelectedColor(color)}
-                  className={`rounded-lg border px-3 py-2 text-sm transition ${
-                    selectedColor === color
-                      ? "border-[#860132] bg-[#860132] text-white"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span
-                      className="h-3 w-3 rounded-full border border-slate-300"
-                      style={{ backgroundColor: getColorSwatch(color) }}
-                    />
-                    {color}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-slate-500">
-              No colors have been added yet.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {variants.length > 0 ? (
-            <>
-              <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                <h3 className="font-semibold">{selectedColor}</h3>
-                <p className="text-sm text-slate-500">
-                  {selectedColorVariants.length} size options available
-                </p>
+            {colors.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {colors.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setSelectedColor(color)}
+                    className={`rounded-lg border px-3 py-2 text-sm transition ${
+                      selectedColor === color
+                        ? "border-[#860132] bg-[#860132] text-white"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="h-3 w-3 rounded-full border border-slate-300"
+                        style={{ backgroundColor: getColorSwatch(color) }}
+                      />
+                      {color}
+                    </span>
+                  </button>
+                ))}
               </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">
+                No colors have been added yet.
+              </p>
+            )}
+          </div>
+        )}
 
-              <table className="w-full text-left text-sm">
-                <thead className="bg-white text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Size</th>
-                    <th className="px-4 py-3">Inventory</th>
-                    <th className="px-4 py-3">Supplier MSRP</th>
-                    <th className="px-4 py-3">Supplier SKU</th>
-                  </tr>
-                </thead>
+        {product.source_type !== "bundle" && (
+          <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white">
+            {variants.length > 0 ? (
+              <>
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <h3 className="font-semibold">{selectedColor}</h3>
+                  <p className="text-sm text-slate-500">
+                    {selectedColorVariants.length} size options available
+                  </p>
+                </div>
 
-                <tbody className="divide-y divide-slate-200">
-                  {selectedColorVariants.map((variant) => (
-                    <tr key={variant.id}>
-                      <td className="px-4 py-3 font-semibold">{variant.size_name}</td>
-                      <td className="px-4 py-3">{variant.inventory_qty ?? "-"}</td>
-                      <td className="px-4 py-3">
-                        {variant.supplier_price
-                          ? `$${Number(variant.supplier_price).toFixed(2)}`
-                          : "-"}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-600">
-                        {variant.supplier_sku}
-                      </td>
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-white text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Size</th>
+                      <th className="px-4 py-3">Inventory</th>
+                      <th className="px-4 py-3">Supplier MSRP</th>
+                      <th className="px-4 py-3">Supplier SKU</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          ) : (
-            <p className="px-4 py-6 text-sm text-slate-500">
-              No sizes or variants have been added yet.
-            </p>
-          )}
-        </div>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-200">
+                    {selectedColorVariants.map((variant) => (
+                      <tr key={variant.id}>
+                        <td className="px-4 py-3 font-semibold">{variant.size_name}</td>
+                        <td className="px-4 py-3">{variant.inventory_qty ?? "-"}</td>
+                        <td className="px-4 py-3">
+                          {variant.supplier_price
+                            ? `$${Number(variant.supplier_price).toFixed(2)}`
+                            : "-"}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                          {variant.supplier_sku}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            ) : (
+              <p className="px-4 py-6 text-sm text-slate-500">
+                No sizes or variants have been added yet.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

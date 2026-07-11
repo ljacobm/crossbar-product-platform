@@ -91,7 +91,7 @@ const navigationGroups: NavigationGroup[] = [
       "/documents",
     ],
     children: [
-      { label: "SOP Library", comingSoon: true },
+      { label: "Resources & SOPs", href: "/operations/resources" },
       { label: "Machines", comingSoon: true },
       { label: "Maintenance", comingSoon: true },
       { label: "Inventory", comingSoon: true },
