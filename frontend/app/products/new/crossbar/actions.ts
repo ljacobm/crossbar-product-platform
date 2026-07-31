@@ -103,6 +103,10 @@ export async function createCrossbarProduct(
     };
   }
 
+  await supabaseAdmin
+    .from("catalog_settings")
+    .insert({ catalog_product_id: catalogProduct.id, workflow_status: "Imported" });
+
   revalidatePath("/products");
   redirect(`/products/${catalogProduct.id}`);
 }

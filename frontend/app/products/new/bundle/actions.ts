@@ -201,6 +201,10 @@ export async function createBundleProduct(
     return { error: "Failed to save package items. Please try again." };
   }
 
+  await supabaseAdmin
+    .from("catalog_settings")
+    .insert({ catalog_product_id: bundleId, workflow_status: "Imported" });
+
   revalidatePath("/products");
   redirect(`/products/${bundleId}`);
 }

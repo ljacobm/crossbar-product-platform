@@ -4,10 +4,55 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { STORAGE_BUCKET } from "@/lib/imageOptions";
+import { WORKFLOW_STATUSES, isWorkflowStatus } from "@/lib/workflowOptions";
 
 export type ActionState = {
   error: string | null;
 };
+
+export async function updateCatalogStatus(
+  catalogProductId: number,
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const status = String(formData.get("workflow_status") || "");
+  const websiteReady = formData.get("website_ready") === "on";
+  const teamStoreEnabled = formData.get("team_store_enabled") === "on";
+
+  if (!isWorkflowStatus(status)) {
+    return { error: `Workflow status must be one of: ${WORKFLOW_STATUSES.join(", ")}.` };
+  }
+
+  const updates: Record<string, unknown> = {
+    catalog_product_id: catalogProductId,
+    workflow_status: status,
+    website_ready: websiteReady,
+    team_store_enabled: teamStoreEnabled,
+  };
+
+  if (status === "Approved") {
+    updates.approved_at = new Date().toISOString();
+  }
+
+  if (status === "Website Ready") {
+    updates.website_ready = true;
+    updates.website_ready_at = new Date().toISOString();
+  }
+
+  const { error } = await supabaseAdmin
+    .from("catalog_settings")
+    .upsert(updates, { onConflict: "catalog_product_id" });
+
+  if (error) {
+    return { error: "Failed to update catalog status. Please try again." };
+  }
+
+  revalidatePath("/products");
+  revalidatePath(`/products/${catalogProductId}`);
+  revalidatePath("/dashboard");
+
+  return { error: null };
+}
 
 export async function archiveProduct(
   catalogProductId: number,

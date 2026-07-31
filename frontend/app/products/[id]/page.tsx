@@ -5,6 +5,8 @@ import BundlePackageItems from "@/components/BundlePackageItems";
 import ProductResourcesSection, {
   type ProductResource,
 } from "@/components/ProductResourcesSection";
+import CatalogStatusCard from "@/components/CatalogStatusCard";
+import ReadinessChecklist from "@/components/ReadinessChecklist";
 
 export default async function ProductDetailPage({
   params,
@@ -57,6 +59,16 @@ export default async function ProductDetailPage({
     });
 
   const variants = product?.product_variants ?? [];
+
+  const { data: catalogSettings } = await supabase
+    .from("catalog_settings")
+    .select(
+      "workflow_status, website_ready, team_store_enabled, approved_by, approved_at, website_ready_at, price_rule_code"
+    )
+    .eq("catalog_product_id", id)
+    .maybeSingle();
+
+  const workflowStatus = catalogSettings?.workflow_status || "Imported";
 
   let bundleItems: {
     id: number;
@@ -226,6 +238,25 @@ export default async function ProductDetailPage({
               product={product}
               images={images}
               variants={variants}
+              workflowStatus={workflowStatus}
+            />
+
+            <CatalogStatusCard
+              productId={product.id}
+              initialStatus={workflowStatus}
+              initialWebsiteReady={catalogSettings?.website_ready ?? false}
+              initialTeamStoreEnabled={catalogSettings?.team_store_enabled ?? false}
+              approvedBy={catalogSettings?.approved_by ?? null}
+              approvedAt={catalogSettings?.approved_at ?? null}
+              websiteReadyAt={catalogSettings?.website_ready_at ?? null}
+            />
+
+            <ReadinessChecklist
+              hasHeroImage={images.length > 0}
+              hasDescription={Boolean(product.description_html?.trim())}
+              hasCategory={Boolean(product.crossbar_category?.trim())}
+              hasPricingRule={Boolean(catalogSettings?.price_rule_code?.trim())}
+              hasResources={resources.length > 0}
             />
 
             <div className="mt-6 rounded-xl bg-white p-6 shadow">

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import ProductActionsMenu from "@/components/ProductActionsMenu";
+import WorkflowStatusBadge from "@/components/WorkflowStatusBadge";
 
 type Product = {
   id: number;
@@ -71,10 +72,12 @@ export default function ProductHeroWorkspace({
   product,
   images,
   variants,
+  workflowStatus,
 }: {
   product: Product;
   images: Image[];
   variants: Variant[];
+  workflowStatus: string;
 }) {
   const colors = useMemo(
     () => Array.from(new Set(variants.map((v) => v.color_name))).sort(),
@@ -204,6 +207,7 @@ export default function ProductHeroWorkspace({
                   ? "Crossbar Product"
                   : "Imported"}
               </span>
+              <WorkflowStatusBadge status={workflowStatus} />
               {!product.active && (
                 <span className="rounded-full bg-slate-200 px-3 py-1 text-sm text-slate-700">
                   Archived

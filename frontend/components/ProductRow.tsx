@@ -1,5 +1,13 @@
 "use client";
 
+import WorkflowStatusBadge from "@/components/WorkflowStatusBadge";
+
+type CatalogSettingsRow = {
+  workflow_status: string;
+  website_ready?: boolean;
+  team_store_enabled?: boolean;
+};
+
 type Product = {
   id: number;
   crossbar_sku: string;
@@ -16,6 +24,7 @@ type Product = {
     active?: boolean;
     sort_order: number | null;
   }[];
+  catalog_settings?: CatalogSettingsRow | CatalogSettingsRow[] | null;
 };
 
 function selectThumbnail(images: Product["product_images"]) {
@@ -58,8 +67,24 @@ function StatusBadge({
   );
 }
 
-export default function ProductRow({ product }: { product: Product }) {
+function resolveSettings(product: Product): CatalogSettingsRow {
+  const settings = product.catalog_settings;
+  if (!settings) return { workflow_status: "Imported" };
+  const row = Array.isArray(settings) ? settings[0] : settings;
+  return row || { workflow_status: "Imported" };
+}
+
+export default function ProductRow({
+  product,
+  selected,
+  onToggleSelect,
+}: {
+  product: Product;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const thumbnail = selectThumbnail(product.product_images ?? []);
+  const settings = resolveSettings(product);
 
   return (
     <tr
@@ -68,6 +93,18 @@ export default function ProductRow({ product }: { product: Product }) {
         window.location.href = `/products/${product.id}`;
       }}
     >
+      {onToggleSelect && (
+        <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={Boolean(selected)}
+            onChange={onToggleSelect}
+            aria-label={`Select ${product.display_name}`}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+        </td>
+      )}
+
       <td className="px-4 py-4">
         <div className="flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-200">
@@ -103,7 +140,28 @@ export default function ProductRow({ product }: { product: Product }) {
       </td>
 
       <td className="px-4 py-4">
-        <StatusBadge active={product.active} sourceType={product.source_type} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge active={product.active} sourceType={product.source_type} />
+          <WorkflowStatusBadge status={settings.workflow_status} />
+          {settings.website_ready && (
+            <span
+              title="Website Ready"
+              aria-label="Website Ready"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-50 text-sm"
+            >
+              🌐
+            </span>
+          )}
+          {settings.team_store_enabled && (
+            <span
+              title="Enabled for Team Stores"
+              aria-label="Enabled for Team Stores"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-sm"
+            >
+              🏬
+            </span>
+          )}
+        </div>
       </td>
 
       <td className="px-4 py-4 text-right text-lg text-slate-400">
