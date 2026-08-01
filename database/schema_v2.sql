@@ -1,5 +1,7 @@
 -- Crossbar Product Platform - Schema V2
 
+drop table if exists supplier_sync_changes cascade;
+drop table if exists supplier_sync_runs cascade;
 drop table if exists product_resource_links cascade;
 drop table if exists knowledge_resources cascade;
 drop table if exists product_bundle_items cascade;
@@ -60,6 +62,7 @@ create table supplier_products (
   supplier_category text,
   supplier_description_html text,
   active boolean default true,
+  supplier_status text not null default 'Active' check (supplier_status in ('Active', 'Discontinued')),
   created_at timestamp default now(),
   updated_at timestamp default now(),
   unique (supplier_id, supplier_style)
@@ -146,6 +149,9 @@ create table product_images (
   color_name text,
   image_url text not null,
   image_type text default 'product',
+  storage_path text,
+  alt_text text,
+  caption text,
   sort_order integer default 0,
   active boolean default true,
   created_at timestamp default now(),
@@ -158,6 +164,11 @@ create table catalog_settings (
   catalog_product_id bigint references catalog_products(id) on delete cascade unique,
   show_on_website boolean default false,
   workflow_status text default 'Imported',
+  website_ready boolean default false,
+  team_store_enabled boolean default false,
+  approved_by text,
+  approved_at timestamp,
+  website_ready_at timestamp,
   featured boolean default false,
   recommended boolean default false,
   website_category text,
@@ -221,12 +232,51 @@ create table quote_request_items (
   updated_at timestamp default now()
 );
 
+-- One row per sync script execution (dry-run or real).
+create table supplier_sync_runs (
+  id bigserial primary key,
+  supplier_id bigint references suppliers(id),
+  started_at timestamp default now(),
+  completed_at timestamp,
+  status text not null default 'running', -- running | completed | failed
+  source_filename text,
+  rows_processed integer default 0,
+  products_new integer default 0,
+  products_updated integer default 0,
+  products_discontinued integer default 0,
+  variants_new integer default 0,
+  variants_updated integer default 0,
+  variants_deactivated integer default 0,
+  images_new integer default 0,
+  images_updated integer default 0,
+  errors_count integer default 0,
+  summary_json jsonb,
+  created_at timestamp default now()
+);
+
+-- Per-change detail rows for a sync run. Inventory-quantity changes are
+-- aggregated into supplier_sync_runs.summary_json instead of one row per
+-- variant, to avoid an unreasonable number of rows on a normal week.
+create table supplier_sync_changes (
+  id bigserial primary key,
+  sync_run_id bigint references supplier_sync_runs(id) on delete cascade,
+  supplier_product_id bigint references supplier_products(id) on delete set null,
+  catalog_product_id bigint references catalog_products(id) on delete set null,
+  change_type text not null, -- New Product | Product Updated | Product Discontinued | Price Changed | Variant Added | Variant Deactivated | Image Added
+  entity_type text not null, -- catalog_product | supplier_product | variant | image
+  field_name text,
+  old_value text,
+  new_value text,
+  created_at timestamp default now()
+);
+
 insert into suppliers (name, code)
 values ('SanMar', 'SAN')
 on conflict (code) do nothing;
 
 create index idx_catalog_products_source_type on catalog_products(source_type);
 create index idx_supplier_products_style on supplier_products(supplier_style);
+create index idx_supplier_products_supplier_status on supplier_products(supplier_status);
 create index idx_supplier_products_catalog_product on supplier_products(catalog_product_id);
 create index idx_product_bundle_items_bundle on product_bundle_items(bundle_catalog_product_id);
 create index idx_product_bundle_items_child on product_bundle_items(child_catalog_product_id);
@@ -234,7 +284,10 @@ create index idx_product_variants_catalog_product on product_variants(catalog_pr
 create index idx_product_variants_supplier_product on product_variants(supplier_product_id);
 create index idx_product_variants_color_size on product_variants(color_name, size_name);
 create index idx_product_images_catalog_product on product_images(catalog_product_id);
+create index idx_product_images_product_type_sort on product_images(catalog_product_id, image_type, sort_order);
 create index idx_catalog_settings_show on catalog_settings(show_on_website);
+create index idx_catalog_settings_workflow_status on catalog_settings(workflow_status);
+create index idx_catalog_settings_team_store on catalog_settings(team_store_enabled);
 create index idx_knowledge_resources_resource_type on knowledge_resources(resource_type);
 create index idx_knowledge_resources_status on knowledge_resources(status);
 create index idx_knowledge_resources_slug on knowledge_resources(slug);
@@ -243,3 +296,7 @@ create index idx_knowledge_resources_active on knowledge_resources(active);
 create index idx_knowledge_resources_updated_at on knowledge_resources(updated_at);
 create index idx_product_resource_links_catalog_product on product_resource_links(catalog_product_id);
 create index idx_product_resource_links_resource on product_resource_links(resource_id);
+create index idx_supplier_sync_runs_supplier on supplier_sync_runs(supplier_id);
+create index idx_supplier_sync_changes_run on supplier_sync_changes(sync_run_id);
+create index idx_supplier_sync_changes_type on supplier_sync_changes(change_type);
+create index idx_supplier_sync_changes_catalog_product on supplier_sync_changes(catalog_product_id);
