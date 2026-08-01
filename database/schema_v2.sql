@@ -1,5 +1,7 @@
 -- Crossbar Product Platform - Schema V2
 
+drop table if exists collection_products cascade;
+drop table if exists collections cascade;
 drop table if exists supplier_sync_changes cascade;
 drop table if exists supplier_sync_runs cascade;
 drop table if exists product_resource_links cascade;
@@ -232,6 +234,32 @@ create table quote_request_items (
   updated_at timestamp default now()
 );
 
+-- Collections: reusable groups of approved Crossbar products. Not Team
+-- Stores. A product may belong to multiple collections; deleting a
+-- collection never deletes products, only the membership rows.
+create table collections (
+  id bigserial primary key,
+  name text not null,
+  slug text unique,
+  description text,
+  sport text,
+  season text,
+  audience text,
+  hero_image_url text,
+  active boolean default true,
+  created_at timestamp default now(),
+  updated_at timestamp default now()
+);
+
+create table collection_products (
+  id bigserial primary key,
+  collection_id bigint references collections(id) on delete cascade,
+  catalog_product_id bigint references catalog_products(id) on delete cascade,
+  sort_order integer default 0,
+  created_at timestamp default now(),
+  unique (collection_id, catalog_product_id)
+);
+
 -- One row per sync script execution (dry-run or real).
 create table supplier_sync_runs (
   id bigserial primary key,
@@ -296,6 +324,10 @@ create index idx_knowledge_resources_active on knowledge_resources(active);
 create index idx_knowledge_resources_updated_at on knowledge_resources(updated_at);
 create index idx_product_resource_links_catalog_product on product_resource_links(catalog_product_id);
 create index idx_product_resource_links_resource on product_resource_links(resource_id);
+create index idx_collections_active on collections(active);
+create index idx_collections_slug on collections(slug);
+create index idx_collection_products_collection on collection_products(collection_id);
+create index idx_collection_products_product on collection_products(catalog_product_id);
 create index idx_supplier_sync_runs_supplier on supplier_sync_runs(supplier_id);
 create index idx_supplier_sync_changes_run on supplier_sync_changes(sync_run_id);
 create index idx_supplier_sync_changes_type on supplier_sync_changes(change_type);

@@ -5,10 +5,12 @@ import { useState } from "react";
 
 type SearchBarProps = {
   placeholder?: string;
+  basePath?: string;
 };
 
 export default function SearchBar({
   placeholder = "Search...",
+  basePath = "/products",
 }: SearchBarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -27,7 +29,7 @@ export default function SearchBar({
 
     params.delete("page");
 
-    router.push(`/products?${params.toString()}`);
+    router.push(`${basePath}?${params.toString()}`);
   }
 
   return (

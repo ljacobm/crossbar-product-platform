@@ -42,7 +42,7 @@ const navigationGroups: NavigationGroup[] = [
     routePrefixes: ["/products", "/suppliers", "/pricing", "/collections"],
     children: [
       { label: "Products", href: "/products" },
-      { label: "Collections", comingSoon: true },
+      { label: "Collections", href: "/collections" },
       { label: "Suppliers", comingSoon: true },
       { label: "Pricing", comingSoon: true },
     ],
