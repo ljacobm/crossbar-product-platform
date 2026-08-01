@@ -1,28 +1,13 @@
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import ProductTableClient from "@/components/ProductTableClient";
-import { Product } from "./ProductRow";
+import ProductPagination from "@/components/ProductPagination";
 import {
-  applyCatalogView,
-  getArchivedProductIds,
+  queryProducts,
   CATALOG_VIEW_EMPTY_MESSAGES,
   type CatalogViewId,
 } from "@/lib/catalogViews";
 
 const PAGE_SIZE = 50;
-
-function buildPageHref(
-  params: Record<string, string | undefined>,
-  page: number
-) {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value) search.set(key, value);
-  }
-  if (page > 1) search.set("page", String(page));
-  const qs = search.toString();
-  return qs ? `/products?${qs}` : "/products";
-}
 
 export default async function ProductTable({
   query = "",
@@ -43,86 +28,26 @@ export default async function ProductTable({
   source?: string;
   page?: number;
 }) {
-  let request = supabase
-    .from("catalog_products")
-    .select(
-      `
-      id,
-      crossbar_sku,
-      display_name,
-      crossbar_category,
-      brand_display,
-      active,
-      source_type,
-      product_images (
-        id,
-        image_url,
-        color_name,
-        image_type,
-        active,
-        sort_order
-      ),
-      catalog_settings!inner (
-        workflow_status,
-        website_ready,
-        team_store_enabled
-      )
-      `,
-      { count: "exact" }
-    )
-    .order("display_name", { ascending: true });
-
-  if (query) {
-    request = request.or(
-      `display_name.ilike.%${query}%,crossbar_sku.ilike.%${query}%,brand_display.ilike.%${query}%,crossbar_category.ilike.%${query}%`
-    );
-  }
-
-  if (brand) {
-    request = request.eq("brand_display", brand);
-  }
-
-  if (category) {
-    request = request.eq("crossbar_category", category);
-  }
-
-  if (source) {
-    request = request.eq("source_type", source);
-  }
-
-  if (view === "all") {
-    if (status === "active") {
-      request = request.eq("active", true);
-    } else if (status === "archived") {
-      request = request.eq("active", false);
-    }
-  } else if (view === "archived") {
-    const archivedIds = await getArchivedProductIds(supabase);
-    request = request.in("id", archivedIds.length > 0 ? archivedIds : [-1]);
-  } else {
-    request = applyCatalogView(request, view);
-  }
-
-  if (workflow) {
-    request = request.eq("catalog_settings.workflow_status", workflow);
-  }
-
-  const from = (page - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
-  request = request.range(from, to);
-
-  const { data, error, count } = await request;
-  const products = (data as Product[]) ?? [];
-  const total = count ?? 0;
+  const { products, count: total, error } = await queryProducts(supabase, {
+    query,
+    brand,
+    category,
+    source,
+    status,
+    workflow,
+    view,
+    page,
+    pageSize: PAGE_SIZE,
+  });
 
   const hasRefiners = Boolean(query || brand || category || workflow || source);
   const emptyMessage = hasRefiners
     ? "No products match the current search and filters."
     : CATALOG_VIEW_EMPTY_MESSAGES[view];
 
+  const from = (page - 1) * PAGE_SIZE;
   const rangeStart = total === 0 ? 0 : from + 1;
   const rangeEnd = Math.min(from + products.length, total);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const preservedParams = {
     q: query || undefined,
@@ -164,35 +89,13 @@ export default async function ProductTable({
         />
       )}
 
-      {total > PAGE_SIZE && (
-        <div className="mt-4 flex items-center justify-between">
-          {page > 1 ? (
-            <Link
-              href={buildPageHref(preservedParams, page - 1)}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              ← Previous
-            </Link>
-          ) : (
-            <span />
-          )}
-
-          <span className="text-sm text-slate-500">
-            Page {page} of {totalPages}
-          </span>
-
-          {page < totalPages ? (
-            <Link
-              href={buildPageHref(preservedParams, page + 1)}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Next →
-            </Link>
-          ) : (
-            <span />
-          )}
-        </div>
-      )}
+      <ProductPagination
+        basePath="/products"
+        page={page}
+        total={total}
+        pageSize={PAGE_SIZE}
+        preservedParams={preservedParams}
+      />
     </div>
   );
 }

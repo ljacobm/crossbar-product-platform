@@ -16,6 +16,8 @@ type Product = {
   brand_display: string | null;
   active: boolean;
   source_type: string;
+  age_group?: string | null;
+  gender?: string | null;
   product_images: {
     id: number;
     image_url: string;
@@ -78,18 +80,25 @@ export default function ProductRow({
   product,
   selected,
   onToggleSelect,
+  disableRowNavigation = false,
 }: {
   product: Product;
   selected?: boolean;
   onToggleSelect?: () => void;
+  disableRowNavigation?: boolean;
 }) {
   const thumbnail = selectThumbnail(product.product_images ?? []);
   const settings = resolveSettings(product);
 
   return (
     <tr
-      className="cursor-pointer transition hover:bg-slate-50"
+      className={
+        disableRowNavigation
+          ? "transition hover:bg-slate-50"
+          : "cursor-pointer transition hover:bg-slate-50"
+      }
       onClick={() => {
+        if (disableRowNavigation) return;
         window.location.href = `/products/${product.id}`;
       }}
     >
@@ -164,8 +173,22 @@ export default function ProductRow({
         </div>
       </td>
 
-      <td className="px-4 py-4 text-right text-lg text-slate-400">
-        ›
+      <td className="px-4 py-4 text-right">
+        {disableRowNavigation ? (
+          <a
+            href={`/products/${product.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="Open product in a new tab"
+            aria-label={`Open ${product.display_name} in a new tab`}
+            className="text-sm text-slate-400 hover:text-[#860132]"
+          >
+            ↗
+          </a>
+        ) : (
+          <span className="text-lg text-slate-400">›</span>
+        )}
       </td>
     </tr>
   );

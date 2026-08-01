@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import CollectionProductsList, {
   type CollectionProduct,
 } from "@/components/CollectionProductsList";
-import CollectionProductPicker from "@/components/CollectionProductPicker";
+import CollectionHealthSummary from "@/components/CollectionHealthSummary";
 import DeleteCollectionButton from "@/components/DeleteCollectionButton";
 
 function selectThumbnail(
@@ -19,10 +19,13 @@ function selectThumbnail(
 
 export default async function CollectionWorkspacePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ added?: string }>;
 }) {
   const { id } = await params;
+  const { added } = await searchParams;
 
   const { data: collection, error } = await supabase
     .from("collections")
@@ -51,6 +54,11 @@ export default async function CollectionWorkspacePage({
       id: number;
       display_name: string;
       crossbar_sku: string;
+      brand_display: string | null;
+      crossbar_category: string | null;
+      source_type: string;
+      age_group: string | null;
+      active: boolean;
       product_images: {
         id: number;
         image_url: string;
@@ -58,7 +66,11 @@ export default async function CollectionWorkspacePage({
         active?: boolean;
         sort_order: number | null;
       }[];
-      catalog_settings: { workflow_status: string } | { workflow_status: string }[] | null;
+      catalog_settings:
+        | { workflow_status: string; website_ready: boolean; team_store_enabled: boolean }
+        | { workflow_status: string; website_ready: boolean; team_store_enabled: boolean }[]
+        | null;
+      supplier_products: { supplier_status: string } | { supplier_status: string }[] | null;
     } | null;
   };
 
@@ -73,6 +85,11 @@ export default async function CollectionWorkspacePage({
         id,
         display_name,
         crossbar_sku,
+        brand_display,
+        crossbar_category,
+        source_type,
+        age_group,
+        active,
         product_images (
           id,
           image_url,
@@ -81,7 +98,12 @@ export default async function CollectionWorkspacePage({
           sort_order
         ),
         catalog_settings (
-          workflow_status
+          workflow_status,
+          website_ready,
+          team_store_enabled
+        ),
+        supplier_products (
+          supplier_status
         )
       )
       `
@@ -96,6 +118,9 @@ export default async function CollectionWorkspacePage({
       const settings = Array.isArray(product.catalog_settings)
         ? product.catalog_settings[0]
         : product.catalog_settings;
+      const supplierProduct = Array.isArray(product.supplier_products)
+        ? product.supplier_products[0]
+        : product.supplier_products;
       const thumbnail = selectThumbnail(product.product_images ?? []);
 
       return {
@@ -103,10 +128,20 @@ export default async function CollectionWorkspacePage({
         catalogProductId: product.id,
         displayName: product.display_name,
         crossbarSku: product.crossbar_sku,
+        brandDisplay: product.brand_display,
+        category: product.crossbar_category,
+        sourceType: product.source_type,
+        ageGroup: product.age_group,
+        active: product.active,
         workflowStatus: settings?.workflow_status || "Imported",
+        websiteReady: settings?.website_ready ?? false,
+        teamStoreEnabled: settings?.team_store_enabled ?? false,
+        supplierStatus: supplierProduct?.supplier_status ?? null,
         thumbnailUrl: thumbnail?.image_url ?? null,
       };
     });
+
+  const addedCount = added ? parseInt(added, 10) : 0;
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">
@@ -133,6 +168,12 @@ export default async function CollectionWorkspacePage({
                 Collections
               </a>
             </div>
+
+            {Number.isFinite(addedCount) && addedCount > 0 && (
+              <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                Added {addedCount} product{addedCount === 1 ? "" : "s"} to this collection.
+              </div>
+            )}
 
             <div className="rounded-xl bg-white p-6 shadow">
               <div className="flex items-start justify-between gap-6">
@@ -199,11 +240,22 @@ export default async function CollectionWorkspacePage({
               </div>
             </div>
 
-            <div className="mt-6">
-              <CollectionProductsList collectionId={collection.id} products={products} />
+            <CollectionHealthSummary products={products} />
+
+            <div className="mt-6 mb-4 flex items-center justify-between">
+              <p className="text-sm text-slate-500">
+                {products.length} product{products.length === 1 ? "" : "s"} in this collection
+              </p>
+
+              <a
+                href={`/collections/${collection.id}/products/add`}
+                className="rounded-lg bg-[#860132] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                Add Products
+              </a>
             </div>
 
-            <CollectionProductPicker collectionId={collection.id} />
+            <CollectionProductsList collectionId={collection.id} products={products} />
           </div>
         </section>
       </div>

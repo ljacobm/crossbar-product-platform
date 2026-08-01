@@ -3,8 +3,19 @@
 import { useState } from "react";
 import ProductRow, { type Product } from "@/components/ProductRow";
 import BulkActionBar from "@/components/BulkActionBar";
+import AddSelectedToCollectionBar from "@/components/AddSelectedToCollectionBar";
 
-export default function ProductTableClient({ products }: { products: Product[] }) {
+export default function ProductTableClient({
+  products,
+  disableRowNavigation = false,
+  bulkBarMode = "catalog",
+  collectionId,
+}: {
+  products: Product[];
+  disableRowNavigation?: boolean;
+  bulkBarMode?: "catalog" | "add-to-collection";
+  collectionId?: number;
+}) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const allSelected = products.length > 0 && products.every((p) => selected.has(p.id));
@@ -30,13 +41,14 @@ export default function ProductTableClient({ products }: { products: Product[] }
     });
   }
 
+  const clearSelection = () => setSelected(new Set());
+
   return (
     <div>
       {selected.size > 0 && (
-        <BulkActionBar
-          selectedIds={Array.from(selected)}
-          onDone={() => setSelected(new Set())}
-        />
+        bulkBarMode === "add-to-collection" && collectionId != null
+          ? <AddSelectedToCollectionBar collectionId={collectionId} selectedIds={Array.from(selected)} />
+          : <BulkActionBar selectedIds={Array.from(selected)} onDone={clearSelection} />
       )}
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -69,6 +81,7 @@ export default function ProductTableClient({ products }: { products: Product[] }
                 product={product}
                 selected={selected.has(product.id)}
                 onToggleSelect={() => toggleOne(product.id)}
+                disableRowNavigation={disableRowNavigation}
               />
             ))}
           </tbody>

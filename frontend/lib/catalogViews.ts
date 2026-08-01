@@ -1,4 +1,49 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Product } from "@/components/ProductRow";
+
+// Shared column set for anything rendering a ProductRow -- Catalog Manager
+// and the Collection product selector both select exactly this shape so
+// they can share ProductRow/ProductTableClient without drift.
+export const PRODUCT_ROW_SELECT = `
+  id,
+  crossbar_sku,
+  display_name,
+  crossbar_category,
+  brand_display,
+  active,
+  source_type,
+  age_group,
+  gender,
+  product_images (
+    id,
+    image_url,
+    color_name,
+    image_type,
+    active,
+    sort_order
+  ),
+  catalog_settings!inner (
+    workflow_status,
+    website_ready,
+    team_store_enabled
+  )
+`;
+
+// Views a product may be added to a collection from. A collection only
+// ever needs to browse products that are at least Approved -- Review
+// Queue, Archived, and the raw "All Products" view are intentionally
+// unreachable here.
+export const COLLECTION_ELIGIBLE_VIEWS = [
+  "approved",
+  "website-ready",
+  "team-store-ready",
+] as const;
+
+export type CollectionEligibleView = (typeof COLLECTION_ELIGIBLE_VIEWS)[number];
+
+export function isCollectionEligibleView(value: string): value is CollectionEligibleView {
+  return (COLLECTION_ELIGIBLE_VIEWS as readonly string[]).includes(value);
+}
 
 export const CATALOG_VIEWS = [
   { id: "all", label: "All Products" },
@@ -117,5 +162,120 @@ export async function getCatalogViewCounts(
     "website-ready": websiteReady.count ?? 0,
     "team-store-ready": teamStoreReady.count ?? 0,
     archived: (inactive.count ?? 0) + (archivedWhileActive.count ?? 0),
+  };
+}
+
+export type ProductQueryFilters = {
+  query?: string;
+  brand?: string;
+  category?: string;
+  source?: string;
+  status?: string; // active | archived | all -- only applied when view === "all"
+  workflow?: string; // raw single-status refiner (Catalog Manager's "All Workflow" dropdown)
+  view?: CatalogViewId;
+  ageGroup?: string;
+  gender?: string;
+  youthOnly?: boolean;
+  excludeIds?: number[];
+  page?: number;
+  pageSize?: number;
+};
+
+export type ProductQueryResult = {
+  products: Product[];
+  count: number;
+  error: boolean;
+};
+
+// The single shared query builder behind both Catalog Manager (/products)
+// and the Collection product selector (/collections/[id]/products/add).
+// Both pages layer their own filter UI on top, but neither hand-builds the
+// PostgREST query itself -- this is the one place that logic lives.
+export async function queryProducts(
+  supabase: SupabaseClient,
+  filters: ProductQueryFilters
+): Promise<ProductQueryResult> {
+  const {
+    query = "",
+    brand = "",
+    category = "",
+    source = "",
+    status = "active",
+    workflow = "",
+    view = "all",
+    ageGroup = "",
+    gender = "",
+    youthOnly = false,
+    excludeIds = [],
+    page = 1,
+    pageSize = 50,
+  } = filters;
+
+  let request = supabase
+    .from("catalog_products")
+    .select(PRODUCT_ROW_SELECT, { count: "exact" })
+    .order("display_name", { ascending: true });
+
+  if (query) {
+    request = request.or(
+      `display_name.ilike.%${query}%,crossbar_sku.ilike.%${query}%,brand_display.ilike.%${query}%,crossbar_category.ilike.%${query}%`
+    );
+  }
+
+  if (brand) {
+    request = request.eq("brand_display", brand);
+  }
+
+  if (category) {
+    request = request.eq("crossbar_category", category);
+  }
+
+  if (source) {
+    request = request.eq("source_type", source);
+  }
+
+  if (ageGroup) {
+    request = request.eq("age_group", ageGroup);
+  }
+
+  if (gender) {
+    request = request.eq("gender", gender);
+  }
+
+  if (youthOnly) {
+    request = request.ilike("display_name", "%Youth%");
+  }
+
+  if (view === "all") {
+    if (status === "active") {
+      request = request.eq("active", true);
+    } else if (status === "archived") {
+      request = request.eq("active", false);
+    }
+  } else if (view === "archived") {
+    const archivedIds = await getArchivedProductIds(supabase);
+    request = request.in("id", archivedIds.length > 0 ? archivedIds : [-1]);
+  } else {
+    request = applyCatalogView(request, view);
+  }
+
+  if (workflow) {
+    request = request.eq("catalog_settings.workflow_status", workflow);
+  }
+
+  if (excludeIds.length > 0) {
+    request = request.not("id", "in", `(${excludeIds.join(",")})`);
+  }
+
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+  request = request.range(from, to);
+
+  const { data, error, count } = await request;
+
+  return {
+    products: (data as Product[]) ?? [],
+    count: count ?? 0,
+    error: Boolean(error),
   };
 }
