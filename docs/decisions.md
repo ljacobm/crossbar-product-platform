@@ -115,3 +115,32 @@ category rather than a hardcoded `<select>` of options.
 products (`T-Shirts`, `Activewear`, ...), Crossbar categories, and bundle
 categories. A fixed option list would either not match existing data or
 require constant maintenance as new supplier categories appear.
+
+## Shopify sales/customer tables have RLS enabled with zero policies
+
+**Decision:** `online_stores`, `shopify_customers`, `shopify_orders`,
+`shopify_order_line_items`, and `shopify_webhook_events` have Postgres Row
+Level Security enabled (`alter table ... enable row level security`) with
+no policies defined for `anon` or `authenticated`, in the migration itself
+— not just as a documented convention to remember. No policy means deny by
+default, so these tables are actually unreachable through the anon-key
+Supabase client (`lib/supabase.ts`) at the database level, regardless of
+what application code does. The service-role client
+(`lib/supabase-admin.ts`) bypasses RLS entirely (standard Postgres/Supabase
+behavior for that role), so the future verified Shopify webhook — and any
+Server Action — continues to read/write these tables normally. Any future
+page or feature that needs to display this data must go through a Server
+Action, an admin-gated route handler, or a deliberately added RLS policy —
+never a plain anon-client Server Component read, which is otherwise this
+app's default pattern.
+**Why:** These tables hold real customer PII — email, phone, shipping/
+billing addresses, order notes, and line-item personalization properties.
+The rest of this schema tolerates "no RLS yet, anon key reads freely" as
+an accepted gap for product-catalog data (see "Row Level Security policies"
+in `docs/roadmap.md`), but that same default left open here would make
+customer PII queryable by anyone holding the public anon key. Enforcing
+this at the database layer (not just "don't write code that does this")
+means the guarantee holds even if a future engineer forgets the rule —
+there's no anon/authenticated policy to accidentally rely on until one is
+deliberately added. No reporting/UI work reads these tables yet
+(schema-only phase), but the enforcement is already live in the schema.
