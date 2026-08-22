@@ -4,6 +4,7 @@ drop table if exists shopify_webhook_events cascade;
 drop table if exists shopify_order_line_items cascade;
 drop table if exists shopify_orders cascade;
 drop table if exists shopify_customers cascade;
+drop table if exists online_store_payouts cascade;
 drop table if exists online_stores cascade;
 drop table if exists collection_products cascade;
 drop table if exists collections cascade;
@@ -339,6 +340,10 @@ create table online_stores (
   -- never off `name`.
   vendor_team_tag text unique,
   active boolean default true,
+  -- Fraction, not a whole number (0.20 = 20%). numeric(5,4) allows up to
+  -- 999.99% at four decimal places of precision -- headroom for a future
+  -- finer-grained rate (e.g. 0.1750), never a realistic constraint.
+  fundraiser_rate numeric(5,4) not null default 0.20,
   created_at timestamp default now(),
   updated_at timestamp default now()
 );
@@ -387,7 +392,7 @@ create table shopify_orders (
   order_updated_at timestamptz,
   cancelled_at timestamptz,
   raw_data jsonb,
-  source text, -- 'webhook' | 'zapier_backfill' | 'manual_import'
+  source text, -- 'webhook' | 'historical_import' | 'zapier_backfill' | 'manual_import' -- set once at first insert, never overwritten by a later touch from any path
   created_at timestamp default now(),
   updated_at timestamp default now()
 );
@@ -441,12 +446,31 @@ create table shopify_webhook_events (
   created_at timestamp default now()
 );
 
+-- Fundraiser payout ledger -- an audit trail, not a running total. Every
+-- check/credit is its own row; the fundraiser balance is always derived as
+-- (fundraiser earned) - (sum of these rows) in application code, never
+-- stored directly on online_stores. online_store_id cascades on delete
+-- (unlike e.g. shopify_orders.customer_id) because a payout record is
+-- meaningless without knowing which store it's for.
+create table online_store_payouts (
+  id bigserial primary key,
+  online_store_id bigint not null references online_stores(id) on delete cascade,
+  payout_date date not null,
+  amount numeric(10,2) not null,
+  payment_type text,
+  reference text,
+  notes text,
+  created_at timestamp default now(),
+  updated_at timestamp default now()
+);
+
 -- Row Level Security: enabled, zero policies. See the SECURITY note above.
 alter table online_stores enable row level security;
 alter table shopify_customers enable row level security;
 alter table shopify_orders enable row level security;
 alter table shopify_order_line_items enable row level security;
 alter table shopify_webhook_events enable row level security;
+alter table online_store_payouts enable row level security;
 
 insert into suppliers (name, code)
 values ('SanMar', 'SAN')
@@ -496,3 +520,5 @@ create index idx_shopify_line_items_shopify_variant on shopify_order_line_items(
 create index idx_shopify_webhook_events_topic on shopify_webhook_events(topic);
 create index idx_shopify_webhook_events_status on shopify_webhook_events(status);
 create index idx_shopify_webhook_events_order on shopify_webhook_events(order_id);
+create index idx_online_store_payouts_store on online_store_payouts(online_store_id);
+create index idx_online_store_payouts_date on online_store_payouts(payout_date);

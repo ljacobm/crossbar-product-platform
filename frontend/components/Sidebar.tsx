@@ -50,9 +50,9 @@ const navigationGroups: NavigationGroup[] = [
   {
     label: "Team Stores",
     icon: Store,
-    routePrefixes: ["/team-stores", "/teams", "/coaches"],
+    routePrefixes: ["/stores", "/team-stores", "/teams", "/coaches"],
     children: [
-      { label: "Stores", comingSoon: true },
+      { label: "Stores", href: "/stores" },
       { label: "Teams", comingSoon: true },
       { label: "Coaches", comingSoon: true },
     ],
