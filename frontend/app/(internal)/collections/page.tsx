@@ -2,7 +2,7 @@ import Sidebar from "@/components/Sidebar";
 import PageHeader from "@/components/PageHeader";
 import SearchBar from "@/components/SearchBar";
 import CollectionsList, { type CollectionListRow } from "@/components/CollectionsList";
-import { supabase } from "@/lib/supabase";
+import { getCollectionList } from "@/lib/collectionData";
 
 export default async function CollectionsPage({
   searchParams,
@@ -12,40 +12,9 @@ export default async function CollectionsPage({
   const params = await searchParams;
   const q = params.q || "";
 
-  let query = supabase
-    .from("collections")
-    .select(
-      `
-      id,
-      name,
-      sport,
-      season,
-      active,
-      products:collection_products(count)
-      `,
-      { count: "exact" }
-    )
-    .order("name", { ascending: true });
+  const { collections: rawCollections, count } = await getCollectionList(q);
 
-  if (q) {
-    const escaped = q.replace(/[%_,]/g, (match) => `\\${match}`);
-    query = query.or(
-      `name.ilike.%${escaped}%,sport.ilike.%${escaped}%,season.ilike.%${escaped}%,audience.ilike.%${escaped}%`
-    );
-  }
-
-  const { data, count } = await query;
-
-  type RawRow = {
-    id: number;
-    name: string;
-    sport: string | null;
-    season: string | null;
-    active: boolean;
-    products: { count: number }[] | null;
-  };
-
-  const collections: CollectionListRow[] = ((data as unknown as RawRow[]) ?? []).map((row) => ({
+  const collections: CollectionListRow[] = rawCollections.map((row) => ({
     id: row.id,
     name: row.name,
     sport: row.sport,

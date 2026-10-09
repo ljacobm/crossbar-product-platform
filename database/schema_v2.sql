@@ -498,6 +498,19 @@ alter table quote_request_items enable row level security;
 alter table supplier_sync_runs enable row level security;
 alter table supplier_sync_changes enable row level security;
 
+-- Phase B, slice 1 (knowledge_resources / product_resource_links) and
+-- slice 2 (collections / collection_products) of the post-Stage-1 RLS
+-- follow-up: every anon-client read of these four tables has been moved
+-- to a supabaseAdmin + requireStaffSession() data module
+-- (lib/knowledgeResourceData.ts, lib/collectionData.ts). NOT YET APPLIED
+-- to the live database as of this file's current state -- see
+-- database/migrations/20261010_enable_rls_phase_b_slice2.sql for slice 2
+-- (slice 1's RLS enablement migration has already been applied).
+alter table knowledge_resources enable row level security;
+alter table product_resource_links enable row level security;
+alter table collections enable row level security;
+alter table collection_products enable row level security;
+
 insert into suppliers (name, code)
 values ('SanMar', 'SAN')
 on conflict (code) do nothing;

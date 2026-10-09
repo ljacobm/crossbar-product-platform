@@ -1,5 +1,5 @@
 import Sidebar from "@/components/Sidebar";
-import { supabase } from "@/lib/supabase";
+import { getCollectionById, getCollectionProductsForWorkspace } from "@/lib/collectionData";
 import CollectionProductsList, {
   type CollectionProduct,
 } from "@/components/CollectionProductsList";
@@ -27,13 +27,9 @@ export default async function CollectionWorkspacePage({
   const { id } = await params;
   const { added } = await searchParams;
 
-  const { data: collection, error } = await supabase
-    .from("collections")
-    .select("id, name, description, sport, season, audience, hero_image_url, active")
-    .eq("id", id)
-    .single();
+  const collection = await getCollectionById(id);
 
-  if (error || !collection) {
+  if (!collection) {
     return (
       <main className="min-h-screen bg-slate-100 text-slate-900">
         <div className="flex min-h-screen">
@@ -46,72 +42,9 @@ export default async function CollectionWorkspacePage({
     );
   }
 
-  type RawRow = {
-    id: number;
-    catalog_product_id: number;
-    sort_order: number | null;
-    product: {
-      id: number;
-      display_name: string;
-      crossbar_sku: string;
-      brand_display: string | null;
-      crossbar_category: string | null;
-      source_type: string;
-      age_group: string | null;
-      active: boolean;
-      product_images: {
-        id: number;
-        image_url: string;
-        image_type?: string;
-        active?: boolean;
-        sort_order: number | null;
-      }[];
-      catalog_settings:
-        | { workflow_status: string; website_ready: boolean; team_store_enabled: boolean }
-        | { workflow_status: string; website_ready: boolean; team_store_enabled: boolean }[]
-        | null;
-      supplier_products: { supplier_status: string } | { supplier_status: string }[] | null;
-    } | null;
-  };
+  const rawProducts = await getCollectionProductsForWorkspace(id);
 
-  const { data: rawProducts } = await supabase
-    .from("collection_products")
-    .select(
-      `
-      id,
-      catalog_product_id,
-      sort_order,
-      product:catalog_products (
-        id,
-        display_name,
-        crossbar_sku,
-        brand_display,
-        crossbar_category,
-        source_type,
-        age_group,
-        active,
-        product_images (
-          id,
-          image_url,
-          image_type,
-          active,
-          sort_order
-        ),
-        catalog_settings (
-          workflow_status,
-          website_ready,
-          team_store_enabled
-        ),
-        supplier_products (
-          supplier_status
-        )
-      )
-      `
-    )
-    .eq("collection_id", id)
-    .order("sort_order", { ascending: true });
-
-  const products: CollectionProduct[] = ((rawProducts as unknown as RawRow[]) ?? [])
+  const products: CollectionProduct[] = rawProducts
     .filter((row) => row.product)
     .map((row) => {
       const product = row.product!;

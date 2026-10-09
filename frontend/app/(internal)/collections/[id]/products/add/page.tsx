@@ -5,6 +5,7 @@ import CollectionSelectorPresets from "@/components/CollectionSelectorPresets";
 import CollectionProductSelectorTable from "@/components/CollectionProductSelectorTable";
 import { supabase } from "@/lib/supabase";
 import { isCollectionEligibleView, type CollectionEligibleView } from "@/lib/catalogViews";
+import { getCollectionName, getExistingCollectionProductIds } from "@/lib/collectionData";
 
 export default async function AddProductsToCollectionPage({
   params,
@@ -26,13 +27,9 @@ export default async function AddProductsToCollectionPage({
   const { id } = await params;
   const sp = await searchParams;
 
-  const { data: collection, error } = await supabase
-    .from("collections")
-    .select("id, name")
-    .eq("id", id)
-    .single();
+  const collection = await getCollectionName(id);
 
-  if (error || !collection) {
+  if (!collection) {
     return (
       <main className="min-h-screen bg-slate-100 text-slate-900">
         <div className="flex min-h-screen">
@@ -56,18 +53,13 @@ export default async function AddProductsToCollectionPage({
     sp.workflowView && isCollectionEligibleView(sp.workflowView) ? sp.workflowView : "approved";
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
 
-  const [{ data: existingLinks }, { data: brandRows }, { data: categoryRows }, { data: ageGroupRows }] =
+  const [excludeIds, { data: brandRows }, { data: categoryRows }, { data: ageGroupRows }] =
     await Promise.all([
-      supabase
-        .from("collection_products")
-        .select("catalog_product_id")
-        .eq("collection_id", collection.id),
+      getExistingCollectionProductIds(collection.id),
       supabase.from("catalog_products").select("brand_display").not("brand_display", "is", null),
       supabase.from("catalog_products").select("crossbar_category").not("crossbar_category", "is", null),
       supabase.from("catalog_products").select("age_group").not("age_group", "is", null),
     ]);
-
-  const excludeIds = (existingLinks || []).map((row) => row.catalog_product_id);
 
   const brands = Array.from(
     new Set((brandRows || []).map((row) => row.brand_display).filter(Boolean))

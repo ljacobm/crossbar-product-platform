@@ -1,6 +1,6 @@
 import Sidebar from "@/components/Sidebar";
 import CollectionForm from "@/components/CollectionForm";
-import { supabase } from "@/lib/supabase";
+import { getCollectionById } from "@/lib/collectionData";
 
 export default async function EditCollectionPage({
   params,
@@ -9,13 +9,9 @@ export default async function EditCollectionPage({
 }) {
   const { id } = await params;
 
-  const { data: collection, error } = await supabase
-    .from("collections")
-    .select("id, name, description, sport, season, audience, hero_image_url, active")
-    .eq("id", id)
-    .single();
+  const collection = await getCollectionById(id);
 
-  if (error || !collection) {
+  if (!collection) {
     return (
       <main className="min-h-screen bg-slate-100 text-slate-900">
         <div className="flex min-h-screen">
