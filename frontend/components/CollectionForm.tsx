@@ -5,7 +5,7 @@ import {
   createCollection,
   updateCollection,
   type CollectionFormState,
-} from "@/app/collections/actions";
+} from "@/app/(internal)/collections/actions";
 import SubmitCollectionButton from "@/components/SubmitCollectionButton";
 
 const initialState: CollectionFormState = { error: null };

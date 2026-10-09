@@ -1,6 +1,7 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireStaffSession } from "@/lib/auth";
 import type { OnlineStore } from "@/lib/onlineStoreTypes";
 
 // Server-only read path for online_stores. This is the only place
@@ -19,6 +20,8 @@ import type { OnlineStore } from "@/lib/onlineStoreTypes";
 // data module per table/feature, called directly from Server Components.
 
 export async function getOnlineStores(query?: string): Promise<OnlineStore[]> {
+  await requireStaffSession();
+
   let request = supabaseAdmin
     .from("online_stores")
     .select("id, name, slug, vendor_team_tag, active, fundraiser_rate, created_at, updated_at")
@@ -39,6 +42,8 @@ export async function getOnlineStores(query?: string): Promise<OnlineStore[]> {
 }
 
 export async function getOnlineStoreById(id: number): Promise<OnlineStore | null> {
+  await requireStaffSession();
+
   if (!Number.isFinite(id)) return null;
 
   const { data, error } = await supabaseAdmin

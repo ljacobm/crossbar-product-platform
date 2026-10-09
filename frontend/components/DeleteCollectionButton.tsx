@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { deleteCollection, type CollectionActionState } from "@/app/collections/actions";
+import { deleteCollection, type CollectionActionState } from "@/app/(internal)/collections/actions";
 
 const initialState: CollectionActionState = { error: null };
 

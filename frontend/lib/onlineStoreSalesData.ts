@@ -1,6 +1,7 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireStaffSession } from "@/lib/auth";
 import type {
   BestSellerRow,
   DateRange,
@@ -66,6 +67,8 @@ export async function getStoreSalesData(
   fundraiserRate: number,
   range: DateRange
 ): Promise<StoreSalesData> {
+  await requireStaffSession();
+
   const { data, error } = await supabaseAdmin
     .from("shopify_order_line_items")
     .select(
@@ -145,6 +148,8 @@ export async function getStoreSalesData(
 }
 
 export async function getStorePayouts(storeId: number): Promise<Payout[]> {
+  await requireStaffSession();
+
   const { data, error } = await supabaseAdmin
     .from("online_store_payouts")
     .select("id, payout_date, amount, payment_type, reference, notes")

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireStaffSession } from "@/lib/auth";
 
 export type PayoutFormState = { error: string | null };
 
@@ -19,6 +20,8 @@ export async function createPayout(
   _prevState: PayoutFormState,
   formData: FormData
 ): Promise<PayoutFormState> {
+  await requireStaffSession();
+
   const payoutDate = field(formData, "payout_date");
   const amountRaw = field(formData, "amount");
   const paymentType = field(formData, "payment_type");

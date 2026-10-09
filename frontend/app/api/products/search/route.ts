@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { requireStaffSession } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
+  try {
+    await requireStaffSession();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const q = request.nextUrl.searchParams.get("q")?.trim() || "";
 
   let query = supabase

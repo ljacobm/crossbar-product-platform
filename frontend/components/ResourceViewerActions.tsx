@@ -5,7 +5,7 @@ import {
   archiveKnowledgeResource,
   restoreKnowledgeResource,
   type ResourceFormState,
-} from "@/app/operations/resources/actions";
+} from "@/app/(internal)/operations/resources/actions";
 
 const initialState: ResourceFormState = { error: null };
 

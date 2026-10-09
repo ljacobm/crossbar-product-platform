@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { bulkAddProductsToCollection } from "@/app/collections/actions";
+import { bulkAddProductsToCollection } from "@/app/(internal)/collections/actions";
 
 export default function AddSelectedToCollectionBar({
   collectionId,

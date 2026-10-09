@@ -4,7 +4,7 @@ import { startTransition, useActionState, useEffect, useRef, useState } from "re
 import {
   uploadProductImages,
   type ImageActionState,
-} from "@/app/products/[id]/images/actions";
+} from "@/app/(internal)/products/[id]/images/actions";
 import {
   ASSIGNABLE_IMAGE_TYPES,
   IMAGE_TYPE_LABELS,

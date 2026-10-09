@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import {
   deleteProductPermanently,
   type ActionState,
-} from "@/app/products/[id]/actions";
+} from "@/app/(internal)/products/[id]/actions";
 
 const initialState: ActionState = { error: null };
 

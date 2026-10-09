@@ -5,7 +5,7 @@ import {
   createKnowledgeResource,
   updateKnowledgeResource,
   type ResourceFormState,
-} from "@/app/operations/resources/actions";
+} from "@/app/(internal)/operations/resources/actions";
 import ResourceRichTextEditor from "@/components/ResourceRichTextEditor";
 import SubmitResourceButton from "@/components/SubmitResourceButton";
 import SaveResourceButton from "@/components/SaveResourceButton";

@@ -5,7 +5,7 @@ import {
   archiveProduct,
   restoreProduct,
   type ActionState,
-} from "@/app/products/[id]/actions";
+} from "@/app/(internal)/products/[id]/actions";
 import DeleteProductModal from "@/components/DeleteProductModal";
 
 const initialState: ActionState = { error: null };

@@ -29,6 +29,58 @@ anything it closes over) is ever included in client-side JavaScript. Every
 mutation still goes through explicit server-side validation before
 touching the database.
 
+## Every internal route, action, and data-access function enforces staff authorization independently
+
+**Decision:** `requireStaffSession()` (`lib/auth.ts`) must be called
+directly inside **every** internal Server Action, Route Handler, and
+exported `"use server"` data-access function (e.g. every function in
+`lib/onlineStoreData.ts`, `lib/onlineStoreSalesData.ts`) — as the first
+statement in the function body, before anything else runs. This applies
+to any **future** internal route/action/data function too, not just the
+ones that existed when this was written. `app/(internal)/layout.tsx` and
+`proxy.ts` also enforce it, but neither is a substitute for the
+per-function check: the layout only wraps *page* rendering (Server
+Actions and Route Handlers aren't inside that tree), and `proxy.ts`
+deliberately only checks for a valid Supabase session — not
+`staff_allowlist` membership — treating that layer as a convenience
+redirect, not the authorization boundary (see the next entry).
+**Why:** A route group layout or middleware/proxy check is a single
+chokepoint — if it's ever misconfigured, bypassed, or simply doesn't
+cover a surface (actions and route handlers structurally can't be covered
+by a page layout at all), everything behind it is unprotected with no
+second check to catch the gap. Requiring the real, DB-backed check
+independently at every function means there is no single point of
+failure. A new internal page/action/route that forgets this check will
+still *render* behind the layout and *redirect* behind the proxy for an
+unauthenticated visitor — but a request that somehow reaches the function
+directly (a forgotten `(internal)` placement, a bypassed proxy, a bug)
+would not be caught without this. When adding a new internal data-access
+function or Server Action, copy the existing pattern (see any function in
+`lib/onlineStoreSalesData.ts` or `app/(internal)/collections/actions.ts`)
+rather than assuming the surrounding layout/proxy already covers it.
+
+## The Next.js Proxy (formerly Middleware) is a UX convenience, never the authorization boundary
+
+**Decision:** `proxy.ts` only checks whether a request carries a valid
+Supabase Auth session (a cheap, local JWT check) and redirects to
+`/login` if not — it never queries `staff_allowlist`. The authoritative
+check is always `requireStaffSession()`, called independently per the
+entry above. Session cookies set via `createServerClient()` use shared,
+explicit options (`lib/supabaseCookieOptions.ts`): `httpOnly: true`
+(nothing in this app reads the session cookie client-side — there is no
+`createBrowserClient` anywhere), `secure` in production only (a hard
+`true` would break local `http://localhost` testing), and `sameSite:
+"lax"` (required for the magic-link redirect to survive the cross-site
+top-level navigation from an email client — `"strict"` risks breaking
+sign-in itself).
+**Why:** Current Next.js guidance explicitly recommends against relying
+on Proxy/Middleware for logic better expressed elsewhere, partly because
+it's easy to over-trust as a single security perimeter. Treating it as
+convenience-only (redirect UX, nothing more) and keeping the real
+enforcement at every function means a Proxy misconfiguration degrades the
+experience (no redirect) rather than the security posture (still no
+access, just a less polished failure).
+
 ## Migrations are plain additive SQL, applied by hand
 
 **Decision:** Each schema change is a small, dated, non-destructive SQL

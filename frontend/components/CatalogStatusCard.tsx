@@ -2,7 +2,7 @@
 
 import { startTransition, useActionState, useState } from "react";
 import Link from "next/link";
-import { updateCatalogStatus, type ActionState } from "@/app/products/[id]/actions";
+import { updateCatalogStatus, type ActionState } from "@/app/(internal)/products/[id]/actions";
 import { WORKFLOW_STATUSES } from "@/lib/workflowOptions";
 
 const initialState: ActionState = { error: null };

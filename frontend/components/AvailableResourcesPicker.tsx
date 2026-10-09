@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import {
   linkExistingResource,
   type ResourceActionState,
-} from "@/app/products/[id]/resources/actions";
+} from "@/app/(internal)/products/[id]/resources/actions";
 import { RESOURCE_TYPES, RESOURCE_TYPE_ICONS } from "@/lib/resourceOptions";
 
 const initialState: ResourceActionState = { error: null };

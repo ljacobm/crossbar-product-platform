@@ -1,0 +1,296 @@
+import Sidebar from "@/components/Sidebar";
+import { supabase } from "@/lib/supabase";
+import { getProductResourceLinks } from "@/lib/knowledgeResourceData";
+import ProductHeroWorkspace from "@/components/ProductHeroWorkspace";
+import BundlePackageItems from "@/components/BundlePackageItems";
+import ProductResourcesSection, {
+  type ProductResource,
+} from "@/components/ProductResourcesSection";
+import CatalogStatusCard from "@/components/CatalogStatusCard";
+import ReadinessChecklist from "@/components/ReadinessChecklist";
+
+export default async function ProductDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  const { data: product, error } = await supabase
+    .from("catalog_products")
+    .select(`
+      *,
+      product_variants (
+        id,
+        color_name,
+        size_name,
+        supplier_sku,
+        supplier_price,
+        inventory_qty
+      )
+    `)
+    .eq("id", id)
+    .single();
+
+  const { data: imagesRaw } = await supabase
+    .from("product_images")
+    .select("id, image_url, image_type, alt_text, caption, color_name, sort_order")
+    .eq("catalog_product_id", id)
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("id", { ascending: true });
+
+  // Hero-first, then sort_order, then id — this also makes images[0] the
+  // correct hero-or-fallback image for the hero display below.
+  const images = ((imagesRaw ?? []) as {
+    id: number;
+    image_url: string;
+    image_type: string;
+    alt_text: string | null;
+    caption: string | null;
+    color_name: string | null;
+    sort_order: number | null;
+  }[])
+    .slice()
+    .sort((a, b) => {
+      const aHero = a.image_type === "hero" ? 0 : 1;
+      const bHero = b.image_type === "hero" ? 0 : 1;
+      if (aHero !== bHero) return aHero - bHero;
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id;
+    });
+
+  const variants = product?.product_variants ?? [];
+
+  const { data: catalogSettings } = await supabase
+    .from("catalog_settings")
+    .select(
+      "workflow_status, website_ready, team_store_enabled, approved_by, approved_at, website_ready_at, price_rule_code"
+    )
+    .eq("catalog_product_id", id)
+    .maybeSingle();
+
+  const workflowStatus = catalogSettings?.workflow_status || "Imported";
+
+  let bundleItems: {
+    id: number;
+    quantity: number;
+    required: boolean;
+    sort_order: number | null;
+    child: {
+      id: number;
+      display_name: string;
+      crossbar_sku: string;
+      brand_display: string | null;
+      crossbar_category: string | null;
+      source_type: string;
+      active: boolean;
+      product_images: { id: number; image_url: string; sort_order: number | null }[];
+    } | null;
+  }[] = [];
+
+  if (product?.source_type === "bundle") {
+    const { data: items } = await supabase
+      .from("product_bundle_items")
+      .select(
+        `
+        id,
+        quantity,
+        required,
+        sort_order,
+        child:catalog_products!child_catalog_product_id (
+          id,
+          display_name,
+          crossbar_sku,
+          brand_display,
+          crossbar_category,
+          source_type,
+          active,
+          product_images (
+            id,
+            image_url,
+            sort_order
+          )
+        )
+        `
+      )
+      .eq("bundle_catalog_product_id", id)
+      .order("sort_order", { ascending: true });
+
+    bundleItems = (items as unknown as typeof bundleItems) ?? [];
+  }
+
+  const resourceLinksRaw = await getProductResourceLinks(id);
+
+  const sortedResourceLinks = resourceLinksRaw
+    .filter((link) => link.resource)
+    .sort((a, b) => {
+      const typeCompare = a.resource!.resource_type.localeCompare(b.resource!.resource_type);
+      if (typeCompare !== 0) return typeCompare;
+
+      const sortOrderCompare = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      if (sortOrderCompare !== 0) return sortOrderCompare;
+
+      return a.resource!.title.localeCompare(b.resource!.title);
+    });
+
+  const resources: ProductResource[] = sortedResourceLinks.map((link) => ({
+    linkId: link.id,
+    resourceId: link.resource!.id,
+    resource_type: link.resource!.resource_type,
+    title: link.resource!.title,
+    summary: link.resource!.summary,
+    version: link.resource!.version,
+    status: link.resource!.status,
+    file_url: link.resource!.file_url,
+    external_url: link.resource!.external_url,
+    active: link.resource!.active,
+    relationship_type: link.relationship_type,
+    required: link.required,
+    notes: link.notes,
+  }));
+
+  if (error || !product) {
+    return (
+      <main className="min-h-screen bg-slate-100 text-slate-900">
+        <div className="flex min-h-screen">
+          <Sidebar />
+          <section className="flex-1 p-8">
+            <div className="rounded-xl bg-white p-6 shadow">
+              Product not found.
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+    return (
+    <main className="min-h-screen bg-slate-100 text-slate-900">
+      <div className="flex min-h-screen">
+        <Sidebar />
+
+        <section className="flex-1">
+          <header className="border-b border-slate-200 bg-white px-8 py-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">
+                  Product Workspace
+                </p>
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {product.display_name}
+                </h2>
+              </div>
+            </div>
+          </header>
+
+          <div className="p-8">
+            <div className="mb-4">
+              <a
+                href="/products"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                <span className="text-lg">←</span>
+                <span>Products Search</span>
+              </a>
+            </div>
+
+            <ProductHeroWorkspace
+              product={product}
+              images={images}
+              variants={variants}
+              workflowStatus={workflowStatus}
+            />
+
+            <CatalogStatusCard
+              productId={product.id}
+              initialStatus={workflowStatus}
+              initialWebsiteReady={catalogSettings?.website_ready ?? false}
+              initialTeamStoreEnabled={catalogSettings?.team_store_enabled ?? false}
+              approvedBy={catalogSettings?.approved_by ?? null}
+              approvedAt={catalogSettings?.approved_at ?? null}
+              websiteReadyAt={catalogSettings?.website_ready_at ?? null}
+            />
+
+            <ReadinessChecklist
+              hasHeroImage={images.length > 0}
+              hasDescription={Boolean(product.description_html?.trim())}
+              hasCategory={Boolean(product.crossbar_category?.trim())}
+              hasPricingRule={Boolean(catalogSettings?.price_rule_code?.trim())}
+              hasResources={resources.length > 0}
+            />
+
+            <div className="mt-6 rounded-xl bg-white p-6 shadow">
+              <h2 className="text-lg font-semibold">Product Information</h2>
+
+              <div className="mt-5 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Description
+                  </h3>
+
+                  <div
+                    className="mt-2 text-sm leading-6 text-slate-700"
+                    dangerouslySetInnerHTML={{
+                      __html:
+                        product.description_html ||
+                        "No product description available yet.",
+                    }}
+                  />
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Details
+                  </h3>
+
+                  <dl className="mt-4 space-y-3 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-slate-500">Brand</dt>
+                      <dd className="font-medium text-slate-900">
+                        {product.brand_display || "-"}
+                      </dd>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-slate-500">Category</dt>
+                      <dd className="font-medium text-slate-900">
+                        {product.crossbar_category || "-"}
+                      </dd>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-slate-500">Crossbar SKU</dt>
+                      <dd className="font-mono text-slate-900">
+                        {product.crossbar_sku || "-"}
+                      </dd>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-slate-500">Status</dt>
+                      <dd className="font-medium text-blue-700">
+                        {!product.active
+                          ? "Archived"
+                          : product.source_type === "bundle"
+                          ? "Bundle"
+                          : product.source_type === "crossbar"
+                          ? "Crossbar Product"
+                          : "Imported"}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+            </div>
+
+            <ProductResourcesSection productId={product.id} resources={resources} />
+
+            {product.source_type === "bundle" && (
+              <BundlePackageItems items={bundleItems} />
+            )}
+
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}

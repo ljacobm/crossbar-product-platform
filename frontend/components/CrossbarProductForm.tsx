@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import {
   createCrossbarProduct,
   type CrossbarProductFormState,
-} from "@/app/products/new/crossbar/actions";
+} from "@/app/(internal)/products/new/crossbar/actions";
 import SubmitProductButton from "@/components/SubmitProductButton";
 
 const initialState: CrossbarProductFormState = { error: null };

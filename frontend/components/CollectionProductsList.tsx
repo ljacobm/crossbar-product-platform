@@ -5,7 +5,7 @@ import {
   removeProductFromCollection,
   bulkRemoveProductsFromCollection,
   type CollectionActionState,
-} from "@/app/collections/actions";
+} from "@/app/(internal)/collections/actions";
 import WorkflowStatusBadge from "@/components/WorkflowStatusBadge";
 
 const initialState: CollectionActionState = { error: null };

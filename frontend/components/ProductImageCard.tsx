@@ -7,7 +7,7 @@ import {
   archiveProductImage,
   restoreProductImage,
   type ImageActionState,
-} from "@/app/products/[id]/images/actions";
+} from "@/app/(internal)/products/[id]/images/actions";
 import DeleteImageModal from "@/components/DeleteImageModal";
 import { IMAGE_TYPES, IMAGE_TYPE_LABELS, type ImageType } from "@/lib/imageOptions";
 

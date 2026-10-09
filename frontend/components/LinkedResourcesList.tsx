@@ -5,7 +5,7 @@ import {
   updateProductResourceLink,
   unlinkProductResource,
   type ResourceActionState,
-} from "@/app/products/[id]/resources/actions";
+} from "@/app/(internal)/products/[id]/resources/actions";
 import { RESOURCE_TYPE_ICONS } from "@/lib/resourceOptions";
 
 const initialState: ResourceActionState = { error: null };

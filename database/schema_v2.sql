@@ -1,5 +1,6 @@
 -- Crossbar Product Platform - Schema V2
 
+drop table if exists staff_allowlist cascade;
 drop table if exists shopify_webhook_events cascade;
 drop table if exists shopify_order_line_items cascade;
 drop table if exists shopify_orders cascade;
@@ -464,6 +465,18 @@ create table online_store_payouts (
   updated_at timestamp default now()
 );
 
+-- Phase 4D Stage 1: staff authorization allowlist. A valid Supabase Auth
+-- session alone does not grant internal access -- requireStaffSession()
+-- (frontend/lib/auth.ts) also requires an active row here. No public
+-- sign-up path exists anywhere in the app.
+create table staff_allowlist (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  active boolean not null default true,
+  created_at timestamp default now(),
+  updated_at timestamp default now()
+);
+
 -- Row Level Security: enabled, zero policies. See the SECURITY note above.
 alter table online_stores enable row level security;
 alter table shopify_customers enable row level security;
@@ -471,6 +484,19 @@ alter table shopify_orders enable row level security;
 alter table shopify_order_line_items enable row level security;
 alter table shopify_webhook_events enable row level security;
 alter table online_store_payouts enable row level security;
+alter table staff_allowlist enable row level security;
+
+-- Phase A of the post-Stage-1 RLS follow-up (database/migrations/
+-- 20261009_enable_rls_phase_a.sql): these five are schema-only (never
+-- read via the anon client) or written exclusively by the service-role
+-- supplier-sync pipeline, so enabling RLS with zero policies here has no
+-- application-code dependency to update first, unlike the 11 actively
+-- anon-read catalog tables (see docs/roadmap.md).
+alter table price_rules enable row level security;
+alter table quote_requests enable row level security;
+alter table quote_request_items enable row level security;
+alter table supplier_sync_runs enable row level security;
+alter table supplier_sync_changes enable row level security;
 
 insert into suppliers (name, code)
 values ('SanMar', 'SAN')

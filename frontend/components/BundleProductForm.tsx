@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import {
   createBundleProduct,
   type BundleProductFormState,
-} from "@/app/products/new/bundle/actions";
+} from "@/app/(internal)/products/new/bundle/actions";
 import SubmitBundleButton from "@/components/SubmitBundleButton";
 import BundleItemsEditor from "@/components/BundleItemsEditor";
 

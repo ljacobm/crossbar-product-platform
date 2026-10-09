@@ -13,6 +13,7 @@ import {
   FolderKanban,
   Home,
   Image,
+  LogOut,
   Search,
   Settings,
   ShoppingBag,
@@ -21,6 +22,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import { signOut } from "@/app/login/actions";
 
 type NavigationChild = {
   label: string;
@@ -304,6 +306,16 @@ export default function Sidebar() {
           <Settings className="h-4 w-4" />
           Settings
         </button>
+
+        <form action={signOut}>
+          <button
+            type="submit"
+            className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-300 transition hover:bg-slate-600 hover:text-white"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </button>
+        </form>
 
         <div className="mt-3 rounded-xl border border-slate-600 bg-slate-800/60 p-4">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">

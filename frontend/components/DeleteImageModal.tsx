@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import {
   deleteProductImage,
   type ImageActionState,
-} from "@/app/products/[id]/images/actions";
+} from "@/app/(internal)/products/[id]/images/actions";
 
 const initialState: ImageActionState = { error: null };
 

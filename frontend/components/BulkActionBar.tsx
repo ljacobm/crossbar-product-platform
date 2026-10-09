@@ -5,8 +5,8 @@ import {
   bulkArchiveProducts,
   bulkSetTeamStoreEnabled,
   bulkUpdateWorkflowStatus,
-} from "@/app/products/catalog-actions";
-import type { BulkActionState } from "@/app/products/catalog-actions";
+} from "@/app/(internal)/products/catalog-actions";
+import type { BulkActionState } from "@/app/(internal)/products/catalog-actions";
 
 export default function BulkActionBar({
   selectedIds,

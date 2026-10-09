@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import {
   updateProduct,
   type UpdateProductFormState,
-} from "@/app/products/[id]/edit/actions";
+} from "@/app/(internal)/products/[id]/edit/actions";
 import SubmitEditProductButton from "@/components/SubmitEditProductButton";
 import BundleItemsEditor, {
   type BundleSelectedItem,
