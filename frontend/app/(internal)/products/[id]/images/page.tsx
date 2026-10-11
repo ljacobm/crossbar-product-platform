@@ -1,8 +1,8 @@
 import Sidebar from "@/components/Sidebar";
-import { supabase } from "@/lib/supabase";
 import ProductImageUploader from "@/components/ProductImageUploader";
-import ProductImageCard, { type ProductImageRow } from "@/components/ProductImageCard";
+import ProductImageCard from "@/components/ProductImageCard";
 import { IMAGE_TYPES, IMAGE_TYPE_LABELS } from "@/lib/imageOptions";
+import { getCatalogProductForImages, getProductImagesList } from "@/lib/catalogProductData";
 
 export default async function ProductImagesPage({
   params,
@@ -11,13 +11,9 @@ export default async function ProductImagesPage({
 }) {
   const { id } = await params;
 
-  const { data: product, error } = await supabase
-    .from("catalog_products")
-    .select("id, display_name, source_type")
-    .eq("id", id)
-    .single();
+  const product = await getCatalogProductForImages(id);
 
-  if (error || !product) {
+  if (!product) {
     return (
       <main className="min-h-screen bg-slate-100 text-slate-900">
         <div className="flex min-h-screen">
@@ -30,17 +26,7 @@ export default async function ProductImagesPage({
     );
   }
 
-  const { data: imagesRaw } = await supabase
-    .from("product_images")
-    .select(
-      "id, image_url, image_type, alt_text, caption, sort_order, active, storage_path"
-    )
-    .eq("catalog_product_id", id)
-    .order("image_type", { ascending: true })
-    .order("sort_order", { ascending: true })
-    .order("id", { ascending: true });
-
-  const images: ProductImageRow[] = imagesRaw ?? [];
+  const images = await getProductImagesList(id);
 
   const canManage = product.source_type === "crossbar" || product.source_type === "bundle";
   const isSupplier = product.source_type === "supplier";

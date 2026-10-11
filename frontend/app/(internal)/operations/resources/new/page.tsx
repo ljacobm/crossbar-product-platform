@@ -1,5 +1,5 @@
 import Sidebar from "@/components/Sidebar";
-import { supabase } from "@/lib/supabase";
+import { getCatalogProductSummary } from "@/lib/catalogProductData";
 import ResourceForm from "@/components/ResourceForm";
 
 export default async function NewResourcePage({
@@ -15,12 +15,7 @@ export default async function NewResourcePage({
   let productName: string | undefined;
 
   if (productId !== undefined) {
-    const { data: product } = await supabase
-      .from("catalog_products")
-      .select("display_name")
-      .eq("id", productId)
-      .single();
-
+    const product = await getCatalogProductSummary(productId);
     productName = product?.display_name;
   }
 

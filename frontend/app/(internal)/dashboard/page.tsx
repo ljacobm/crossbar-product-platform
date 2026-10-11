@@ -1,7 +1,7 @@
 import Sidebar from "@/components/Sidebar";
 import PageHeader from "@/components/PageHeader";
 import StatCard from "@/components/StatCard";
-import { supabase } from "@/lib/supabase";
+import { getDashboardStatusCounts } from "@/lib/catalogSummaryData";
 import { WORKFLOW_STATUSES } from "@/lib/workflowOptions";
 
 const STATUS_VIEW_HREF: Record<string, string> = {
@@ -13,23 +13,8 @@ const STATUS_VIEW_HREF: Record<string, string> = {
 };
 
 export default async function DashboardPage() {
-  const [counts, teamStoreCount] = await Promise.all([
-    Promise.all(
-      WORKFLOW_STATUSES.map(async (status) => {
-        const { count } = await supabase
-          .from("catalog_settings")
-          .select("id", { count: "exact", head: true })
-          .eq("workflow_status", status);
-        return count ?? 0;
-      })
-    ),
-    supabase
-      .from("catalog_products")
-      .select("id, catalog_settings!inner(team_store_enabled)", { count: "exact", head: true })
-      .eq("active", true)
-      .eq("catalog_settings.team_store_enabled", true)
-      .then((res) => res.count ?? 0),
-  ]);
+  const { byStatus, teamStoreReady: teamStoreCount } = await getDashboardStatusCounts();
+  const counts = WORKFLOW_STATUSES.map((status) => byStatus[status]);
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">

@@ -6,8 +6,8 @@ import SearchBar from "@/components/SearchBar";
 import ProductFilters from "@/components/ProductFilters";
 import CatalogViewTabs from "@/components/CatalogViewTabs";
 import CommonViewsMenu from "@/components/CommonViewsMenu";
-import { supabase } from "@/lib/supabase";
-import { getCatalogViewCounts, isCatalogView, type CatalogViewId } from "@/lib/catalogViews";
+import { isCatalogView, type CatalogViewId } from "@/lib/catalogViews";
+import { getCatalogViewCounts, getCatalogBrandCategoryFacets } from "@/lib/catalogProductData";
 
 export default async function ProductsPage({
   searchParams,
@@ -34,19 +34,10 @@ export default async function ProductsPage({
   const view: CatalogViewId = params.view && isCatalogView(params.view) ? params.view : "all";
   const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
 
-  const [{ data: brandRows }, { data: categoryRows }, viewCounts] = await Promise.all([
-    supabase.from("catalog_products").select("brand_display").not("brand_display", "is", null),
-    supabase.from("catalog_products").select("crossbar_category").not("crossbar_category", "is", null),
-    getCatalogViewCounts(supabase),
+  const [{ brands, categories }, viewCounts] = await Promise.all([
+    getCatalogBrandCategoryFacets(),
+    getCatalogViewCounts(),
   ]);
-
-  const brands = Array.from(
-    new Set((brandRows || []).map((row) => row.brand_display).filter(Boolean))
-  ).sort();
-
-  const categories = Array.from(
-    new Set((categoryRows || []).map((row) => row.crossbar_category).filter(Boolean))
-  ).sort();
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">

@@ -3,9 +3,9 @@ import SearchBar from "@/components/SearchBar";
 import CollectionSelectorFilters from "@/components/CollectionSelectorFilters";
 import CollectionSelectorPresets from "@/components/CollectionSelectorPresets";
 import CollectionProductSelectorTable from "@/components/CollectionProductSelectorTable";
-import { supabase } from "@/lib/supabase";
 import { isCollectionEligibleView, type CollectionEligibleView } from "@/lib/catalogViews";
 import { getCollectionName, getExistingCollectionProductIds } from "@/lib/collectionData";
+import { getCollectionProductFacets } from "@/lib/catalogProductData";
 
 export default async function AddProductsToCollectionPage({
   params,
@@ -53,25 +53,10 @@ export default async function AddProductsToCollectionPage({
     sp.workflowView && isCollectionEligibleView(sp.workflowView) ? sp.workflowView : "approved";
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
 
-  const [excludeIds, { data: brandRows }, { data: categoryRows }, { data: ageGroupRows }] =
-    await Promise.all([
-      getExistingCollectionProductIds(collection.id),
-      supabase.from("catalog_products").select("brand_display").not("brand_display", "is", null),
-      supabase.from("catalog_products").select("crossbar_category").not("crossbar_category", "is", null),
-      supabase.from("catalog_products").select("age_group").not("age_group", "is", null),
-    ]);
-
-  const brands = Array.from(
-    new Set((brandRows || []).map((row) => row.brand_display).filter(Boolean))
-  ).sort();
-
-  const categories = Array.from(
-    new Set((categoryRows || []).map((row) => row.crossbar_category).filter(Boolean))
-  ).sort();
-
-  const ageGroups = Array.from(
-    new Set((ageGroupRows || []).map((row) => row.age_group).filter(Boolean))
-  ).sort();
+  const [excludeIds, { brands, categories, ageGroups }] = await Promise.all([
+    getExistingCollectionProductIds(collection.id),
+    getCollectionProductFacets(),
+  ]);
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">

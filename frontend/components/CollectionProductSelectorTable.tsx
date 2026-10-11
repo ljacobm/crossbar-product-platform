@@ -1,11 +1,7 @@
-import { supabase } from "@/lib/supabase";
 import ProductTableClient from "@/components/ProductTableClient";
 import ProductPagination from "@/components/ProductPagination";
-import {
-  queryProducts,
-  isCollectionEligibleView,
-  type CollectionEligibleView,
-} from "@/lib/catalogViews";
+import { isCollectionEligibleView, type CollectionEligibleView } from "@/lib/catalogViews";
+import { queryProducts } from "@/lib/catalogProductData";
 
 const PAGE_SIZE = 50;
 
@@ -44,7 +40,7 @@ export default async function CollectionProductSelectorTable({
     ? workflowView
     : "approved";
 
-  const { products, count: total, error } = await queryProducts(supabase, {
+  const { products, count: total, error } = await queryProducts({
     query,
     brand,
     category,

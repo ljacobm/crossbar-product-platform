@@ -1,6 +1,6 @@
 import Sidebar from "@/components/Sidebar";
-import { supabase } from "@/lib/supabase";
 import { getProductResourceLinks } from "@/lib/knowledgeResourceData";
+import { getCatalogProductSummary } from "@/lib/catalogProductData";
 import LinkedResourcesList, { type LinkedResource } from "@/components/LinkedResourcesList";
 import AvailableResourcesPicker from "@/components/AvailableResourcesPicker";
 
@@ -11,13 +11,9 @@ export default async function ProductResourcesPage({
 }) {
   const { id } = await params;
 
-  const { data: product, error } = await supabase
-    .from("catalog_products")
-    .select("id, display_name")
-    .eq("id", id)
-    .single();
+  const product = await getCatalogProductSummary(id);
 
-  if (error || !product) {
+  if (!product) {
     return (
       <main className="min-h-screen bg-slate-100 text-slate-900">
         <div className="flex min-h-screen">

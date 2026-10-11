@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import { requireStaffSession } from "@/lib/auth";
+import { searchCatalogProducts } from "@/lib/catalogSummaryData";
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,40 +11,10 @@ export async function GET(request: NextRequest) {
 
   const q = request.nextUrl.searchParams.get("q")?.trim() || "";
 
-  let query = supabase
-    .from("catalog_products")
-    .select(
-      `
-      id,
-      display_name,
-      crossbar_sku,
-      brand_display,
-      crossbar_category,
-      source_type,
-      active,
-      product_images (
-        id,
-        image_url,
-        sort_order
-      )
-      `
-    )
-    .eq("active", true)
-    .neq("source_type", "bundle")
-    .order("display_name", { ascending: true })
-    .order("sort_order", { foreignTable: "product_images", ascending: true })
-    .limit(20);
-
-  if (q) {
-    const escaped = q.replace(/[%_,]/g, (match) => `\\${match}`);
-    query = query.or(
-      `display_name.ilike.%${escaped}%,crossbar_sku.ilike.%${escaped}%,brand_display.ilike.%${escaped}%`
-    );
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
+  let data;
+  try {
+    data = await searchCatalogProducts(q);
+  } catch {
     return NextResponse.json(
       { error: "Failed to search products." },
       { status: 500 }

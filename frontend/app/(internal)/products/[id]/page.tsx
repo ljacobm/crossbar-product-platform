@@ -1,6 +1,11 @@
 import Sidebar from "@/components/Sidebar";
-import { supabase } from "@/lib/supabase";
 import { getProductResourceLinks } from "@/lib/knowledgeResourceData";
+import {
+  getProductWorkspaceCore,
+  getProductWorkspaceImages,
+  getProductCatalogSettings,
+  getBundleItemLinks,
+} from "@/lib/catalogProductData";
 import ProductHeroWorkspace from "@/components/ProductHeroWorkspace";
 import BundlePackageItems from "@/components/BundlePackageItems";
 import ProductResourcesSection, {
@@ -16,29 +21,9 @@ export default async function ProductDetailPage({
 }) {
   const { id } = await params;
 
-  const { data: product, error } = await supabase
-    .from("catalog_products")
-    .select(`
-      *,
-      product_variants (
-        id,
-        color_name,
-        size_name,
-        supplier_sku,
-        supplier_price,
-        inventory_qty
-      )
-    `)
-    .eq("id", id)
-    .single();
+  const { product, error } = await getProductWorkspaceCore(id);
 
-  const { data: imagesRaw } = await supabase
-    .from("product_images")
-    .select("id, image_url, image_type, alt_text, caption, color_name, sort_order")
-    .eq("catalog_product_id", id)
-    .eq("active", true)
-    .order("sort_order", { ascending: true })
-    .order("id", { ascending: true });
+  const imagesRaw = await getProductWorkspaceImages(id);
 
   // Hero-first, then sort_order, then id — this also makes images[0] the
   // correct hero-or-fallback image for the hero display below.
@@ -61,13 +46,7 @@ export default async function ProductDetailPage({
 
   const variants = product?.product_variants ?? [];
 
-  const { data: catalogSettings } = await supabase
-    .from("catalog_settings")
-    .select(
-      "workflow_status, website_ready, team_store_enabled, approved_by, approved_at, website_ready_at, price_rule_code"
-    )
-    .eq("catalog_product_id", id)
-    .maybeSingle();
+  const catalogSettings = await getProductCatalogSettings(id);
 
   const workflowStatus = catalogSettings?.workflow_status || "Imported";
 
@@ -89,33 +68,7 @@ export default async function ProductDetailPage({
   }[] = [];
 
   if (product?.source_type === "bundle") {
-    const { data: items } = await supabase
-      .from("product_bundle_items")
-      .select(
-        `
-        id,
-        quantity,
-        required,
-        sort_order,
-        child:catalog_products!child_catalog_product_id (
-          id,
-          display_name,
-          crossbar_sku,
-          brand_display,
-          crossbar_category,
-          source_type,
-          active,
-          product_images (
-            id,
-            image_url,
-            sort_order
-          )
-        )
-        `
-      )
-      .eq("bundle_catalog_product_id", id)
-      .order("sort_order", { ascending: true });
-
+    const items = await getBundleItemLinks(id);
     bundleItems = (items as unknown as typeof bundleItems) ?? [];
   }
 

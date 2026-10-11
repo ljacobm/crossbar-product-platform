@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Product } from "@/components/ProductRow";
 
 // Shared column set for anything rendering a ProductRow -- Catalog Manager
@@ -99,72 +98,6 @@ export function applyCatalogView(request: any, view: Exclude<CatalogViewId, "arc
   }
 }
 
-// Returns every product ID that belongs in the Archived view: inactive
-// products, plus active products whose workflow status has been manually
-// set to Archived without archiving the product itself. The two source
-// sets are disjoint by construction (one requires active=false, the other
-// active=true), so no dedup is needed.
-export async function getArchivedProductIds(supabase: SupabaseClient): Promise<number[]> {
-  const [inactive, archivedWhileActive] = await Promise.all([
-    supabase.from("catalog_products").select("id").eq("active", false),
-    supabase
-      .from("catalog_products")
-      .select("id, catalog_settings!inner(workflow_status)")
-      .eq("active", true)
-      .eq("catalog_settings.workflow_status", "Archived"),
-  ]);
-
-  const inactiveIds = (inactive.data ?? []).map((row: { id: number }) => row.id);
-  const archivedWhileActiveIds = (archivedWhileActive.data ?? []).map((row: { id: number }) => row.id);
-
-  return [...inactiveIds, ...archivedWhileActiveIds];
-}
-
-// Fixed counts per view, ignoring any active search/brand/category/workflow
-// refinements — these are the tab badge counts, not the filtered result count.
-export async function getCatalogViewCounts(
-  supabase: SupabaseClient
-): Promise<Record<CatalogViewId, number>> {
-  const [all, review, approved, websiteReady, teamStoreReady, inactive, archivedWhileActive] = await Promise.all([
-    supabase.from("catalog_products").select("id", { count: "exact", head: true }).eq("active", true),
-    supabase
-      .from("catalog_products")
-      .select("id, catalog_settings!inner(workflow_status)", { count: "exact", head: true })
-      .eq("active", true)
-      .in("catalog_settings.workflow_status", ["Imported", "Reviewing"]),
-    supabase
-      .from("catalog_products")
-      .select("id, catalog_settings!inner(workflow_status)", { count: "exact", head: true })
-      .eq("active", true)
-      .in("catalog_settings.workflow_status", ["Approved", "Website Ready"]),
-    supabase
-      .from("catalog_products")
-      .select("id, catalog_settings!inner(website_ready)", { count: "exact", head: true })
-      .eq("active", true)
-      .eq("catalog_settings.website_ready", true),
-    supabase
-      .from("catalog_products")
-      .select("id, catalog_settings!inner(team_store_enabled)", { count: "exact", head: true })
-      .eq("active", true)
-      .eq("catalog_settings.team_store_enabled", true),
-    supabase.from("catalog_products").select("id", { count: "exact", head: true }).eq("active", false),
-    supabase
-      .from("catalog_products")
-      .select("id, catalog_settings!inner(workflow_status)", { count: "exact", head: true })
-      .eq("active", true)
-      .eq("catalog_settings.workflow_status", "Archived"),
-  ]);
-
-  return {
-    all: all.count ?? 0,
-    review: review.count ?? 0,
-    approved: approved.count ?? 0,
-    "website-ready": websiteReady.count ?? 0,
-    "team-store-ready": teamStoreReady.count ?? 0,
-    archived: (inactive.count ?? 0) + (archivedWhileActive.count ?? 0),
-  };
-}
-
 export type ProductQueryFilters = {
   query?: string;
   brand?: string;
@@ -187,95 +120,14 @@ export type ProductQueryResult = {
   error: boolean;
 };
 
-// The single shared query builder behind both Catalog Manager (/products)
-// and the Collection product selector (/collections/[id]/products/add).
-// Both pages layer their own filter UI on top, but neither hand-builds the
-// PostgREST query itself -- this is the one place that logic lives.
-export async function queryProducts(
-  supabase: SupabaseClient,
-  filters: ProductQueryFilters
-): Promise<ProductQueryResult> {
-  const {
-    query = "",
-    brand = "",
-    category = "",
-    source = "",
-    status = "active",
-    workflow = "",
-    view = "all",
-    ageGroup = "",
-    gender = "",
-    youthOnly = false,
-    excludeIds = [],
-    page = 1,
-    pageSize = 50,
-  } = filters;
-
-  let request = supabase
-    .from("catalog_products")
-    .select(PRODUCT_ROW_SELECT, { count: "exact" })
-    .order("display_name", { ascending: true });
-
-  if (query) {
-    request = request.or(
-      `display_name.ilike.%${query}%,crossbar_sku.ilike.%${query}%,brand_display.ilike.%${query}%,crossbar_category.ilike.%${query}%`
-    );
-  }
-
-  if (brand) {
-    request = request.eq("brand_display", brand);
-  }
-
-  if (category) {
-    request = request.eq("crossbar_category", category);
-  }
-
-  if (source) {
-    request = request.eq("source_type", source);
-  }
-
-  if (ageGroup) {
-    request = request.eq("age_group", ageGroup);
-  }
-
-  if (gender) {
-    request = request.eq("gender", gender);
-  }
-
-  if (youthOnly) {
-    request = request.ilike("display_name", "%Youth%");
-  }
-
-  if (view === "all") {
-    if (status === "active") {
-      request = request.eq("active", true);
-    } else if (status === "archived") {
-      request = request.eq("active", false);
-    }
-  } else if (view === "archived") {
-    const archivedIds = await getArchivedProductIds(supabase);
-    request = request.in("id", archivedIds.length > 0 ? archivedIds : [-1]);
-  } else {
-    request = applyCatalogView(request, view);
-  }
-
-  if (workflow) {
-    request = request.eq("catalog_settings.workflow_status", workflow);
-  }
-
-  if (excludeIds.length > 0) {
-    request = request.not("id", "in", `(${excludeIds.join(",")})`);
-  }
-
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-  request = request.range(from, to);
-
-  const { data, error, count } = await request;
-
-  return {
-    products: (data as Product[]) ?? [],
-    count: count ?? 0,
-    error: Boolean(error),
-  };
-}
+// The query-building logic above (applyCatalogView) and the shared
+// PRODUCT_ROW_SELECT column set are consumed by queryProducts(), which --
+// along with getCatalogViewCounts() and getArchivedProductIds() -- now
+// lives in lib/catalogProductData.ts, a dedicated "use server" module.
+// This file (catalogViews.ts) stays a plain, directive-free module on
+// purpose: it's imported by server components that need the view
+// constants/types (CatalogViewTabs, CollectionSelectorPresets) alongside
+// the ones that run the actual data query, and a "use server" file may
+// only export async functions as real values -- it can't also export
+// these plain constants and sync helpers. See lib/catalogProductData.ts
+// for the full explanation.

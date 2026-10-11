@@ -1,11 +1,7 @@
-import { supabase } from "@/lib/supabase";
 import ProductTableClient from "@/components/ProductTableClient";
 import ProductPagination from "@/components/ProductPagination";
-import {
-  queryProducts,
-  CATALOG_VIEW_EMPTY_MESSAGES,
-  type CatalogViewId,
-} from "@/lib/catalogViews";
+import { CATALOG_VIEW_EMPTY_MESSAGES, type CatalogViewId } from "@/lib/catalogViews";
+import { queryProducts } from "@/lib/catalogProductData";
 
 const PAGE_SIZE = 50;
 
@@ -28,7 +24,7 @@ export default async function ProductTable({
   source?: string;
   page?: number;
 }) {
-  const { products, count: total, error } = await queryProducts(supabase, {
+  const { products, count: total, error } = await queryProducts({
     query,
     brand,
     category,

@@ -1,5 +1,10 @@
 import Sidebar from "@/components/Sidebar";
-import { supabase } from "@/lib/supabase";
+import {
+  getCatalogProductForEdit,
+  getCrossbarProductData,
+  getSupplierProductSummary,
+  getBundleItemLinks,
+} from "@/lib/catalogProductData";
 import ProductEditForm from "@/components/ProductEditForm";
 import type { BundleSelectedItem } from "@/components/BundleItemsEditor";
 
@@ -10,25 +15,9 @@ export default async function EditProductPage({
 }) {
   const { id } = await params;
 
-  const { data: product, error } = await supabase
-    .from("catalog_products")
-    .select(
-      `
-      id,
-      display_name,
-      crossbar_sku,
-      product_slug,
-      description_html,
-      crossbar_category,
-      brand_display,
-      source_type,
-      active
-      `
-    )
-    .eq("id", id)
-    .single();
+  const product = await getCatalogProductForEdit(id);
 
-  if (error || !product) {
+  if (!product) {
     return (
       <main className="min-h-screen bg-slate-100 text-slate-900">
         <div className="flex min-h-screen">
@@ -62,62 +51,15 @@ export default async function EditProductPage({
   let bundleItems: BundleSelectedItem[] = [];
 
   if (product.source_type === "crossbar") {
-    const { data } = await supabase
-      .from("crossbar_product_data")
-      .select(
-        `
-        product_family,
-        production_method,
-        base_template,
-        default_size_range,
-        product_notes,
-        production_notes
-        `
-      )
-      .eq("catalog_product_id", id)
-      .maybeSingle();
-
-    crossbarData = data;
+    crossbarData = await getCrossbarProductData(id);
   }
 
   if (product.source_type === "supplier") {
-    const { data } = await supabase
-      .from("supplier_products")
-      .select("supplier_style, supplier_title, supplier_brand, supplier_category")
-      .eq("catalog_product_id", id)
-      .order("id", { ascending: true })
-      .limit(1);
-
-    supplierData = data?.[0] ?? null;
+    supplierData = await getSupplierProductSummary(id);
   }
 
   if (product.source_type === "bundle") {
-    const { data: items } = await supabase
-      .from("product_bundle_items")
-      .select(
-        `
-        id,
-        quantity,
-        required,
-        sort_order,
-        child:catalog_products!child_catalog_product_id (
-          id,
-          display_name,
-          crossbar_sku,
-          brand_display,
-          crossbar_category,
-          source_type,
-          active,
-          product_images (
-            id,
-            image_url,
-            sort_order
-          )
-        )
-        `
-      )
-      .eq("bundle_catalog_product_id", id)
-      .order("sort_order", { ascending: true });
+    const items = await getBundleItemLinks(id);
 
     type RawItem = {
       quantity: number;
