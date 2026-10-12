@@ -19,20 +19,32 @@ import type { PortalLinkStatus } from "@/lib/onlineStorePortalData";
 // still gives the same "disable buttons while a request is in flight"
 // behavior those components get from useActionState's pending flag.
 //
-// IMPORTANT: the customer-facing /portal/[token] route does not exist
-// yet (that's a later slice). The `generationEnabled` prop (computed
-// server-side by isPortalGenerationEnabled(), lib/portalFeatureFlag.ts,
-// and passed down from the Overview page) disables the Generate/
-// Regenerate buttons here purely for a clear, non-confusing staff
-// experience -- this client-side disable is NOT the actual security
-// control. The real enforcement is the same flag checked again, server
-// side, inside generatePortalLink/regeneratePortalLink themselves
-// (app/(internal)/stores/[storeId]/actions.ts), after
-// requireStaffSession() and before any token is generated -- a disabled
-// button alone would never stop someone from invoking the underlying
-// Server Action directly. Revoking an existing link is never gated by
-// this flag: there's no harm in disabling a link regardless of whether
-// the portal page is live, only in minting a new one nobody can use yet.
+// IMPORTANT: the customer-facing /portal/[token] route is feature-flagged
+// off, and Slice 4A adds a second, narrower gate -- a single pilot store,
+// configured server-side (PORTAL_PILOT_STORE_ID). The `generationEnabled`
+// and `pilotEligible` props (both computed server-side in
+// lib/portalFeatureFlag.ts and passed down from the Overview page)
+// disable the Generate/Regenerate buttons here purely for a clear,
+// non-confusing staff experience -- this client-side disable is NOT the
+// actual security control. The real enforcement is the same two checks
+// run again, server side, inside generatePortalLink/regeneratePortalLink
+// themselves (app/(internal)/stores/[storeId]/actions.ts) and inside the
+// customer data-serving path (lib/customerPortalSalesData.ts), after
+// requireStaffSession() (staff side) or token resolution (customer side)
+// and before any token is generated or any sales/payout data is queried
+// -- a disabled button alone would never stop someone from invoking the
+// underlying Server Action directly. Revoking an existing link is never
+// gated by either flag: there's no harm in disabling a link regardless
+// of the portal's deployment or pilot state, only in minting a new one
+// nobody can use yet, or one outside the pilot.
+//
+// pilotEligible being true already implies generationEnabled is true too
+// (isStoreAllowedForPilot() checks both) -- generationEnabled is kept as
+// a separate prop purely so this component can show the right message
+// for the right reason: "the whole feature is off" reads differently
+// from "the feature is on, but not for this store," and conflating them
+// into one boolean would lose that distinction for staff troubleshooting
+// a specific store.
 
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString("en-US", {
@@ -48,10 +60,12 @@ export default function PortalLinkSection({
   storeId,
   initialStatus,
   generationEnabled,
+  pilotEligible,
 }: {
   storeId: number;
   initialStatus: PortalLinkStatus;
   generationEnabled: boolean;
+  pilotEligible: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +79,15 @@ export default function PortalLinkSection({
   const [confirmAction, setConfirmAction] = useState<"regenerate" | "disable" | null>(null);
 
   const { enabled, createdAt, lastAccessedAt, accessCount } = initialStatus;
+
+  // Mirrors the two banners above into a single tooltip string -- never
+  // names the configured pilot store, only states that this one isn't
+  // it.
+  const generateDisabledTitle = !generationEnabled
+    ? "Disabled until the customer portal page is deployed."
+    : !pilotEligible
+    ? "Disabled -- this store is not part of the current pilot."
+    : undefined;
 
   function handleResult(result: PortalLinkActionState) {
     if (result.error) {
@@ -140,6 +163,13 @@ export default function PortalLinkSection({
         </p>
       )}
 
+      {generationEnabled && !pilotEligible && (
+        <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          This store is not part of the current customer portal pilot. Link generation is
+          disabled for this store.
+        </p>
+      )}
+
       {error && (
         <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
@@ -209,12 +239,8 @@ export default function PortalLinkSection({
           <button
             type="button"
             onClick={runGenerate}
-            disabled={isPending || !generationEnabled}
-            title={
-              !generationEnabled
-                ? "Disabled until the customer portal page is deployed."
-                : undefined
-            }
+            disabled={isPending || !pilotEligible}
+            title={generateDisabledTitle}
             className="rounded-lg bg-[#860132] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isPending ? "Generating..." : "Generate Link"}
@@ -224,12 +250,8 @@ export default function PortalLinkSection({
             <button
               type="button"
               onClick={() => setConfirmAction("regenerate")}
-              disabled={isPending || !generationEnabled}
-              title={
-                !generationEnabled
-                  ? "Disabled until the customer portal page is deployed."
-                  : undefined
-              }
+              disabled={isPending || !pilotEligible}
+              title={generateDisabledTitle}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Regenerate Link

@@ -199,6 +199,107 @@ run("customer portal page checks the feature flag before resolving any token", (
   assert.ok(flagCheckIndex < resolveIndex);
 });
 
+run("getCustomerPortalData enforces the pilot allowlist after token resolution, before any sales/payout query", () => {
+  // Stripped of comments first: toCustomerPayout's own doc comment
+  // mentions "buildStorePayouts()" (describing the shape it maps from)
+  // well before the real call site, which would otherwise make this
+  // check see a false, earlier "payout query" that was never a query.
+  const source = stripLineComments(readSource("lib/customerPortalSalesData.ts"));
+  const resolveIndex = source.indexOf("resolvePortalStoreId(rawToken)");
+  const pilotCheckIndex = source.indexOf("isStoreAllowedForPilot(storeId)");
+  const storeInfoIndex = source.indexOf("getStoreNameAndRate(storeId)");
+  const salesQueryIndex = source.indexOf("buildStoreSalesData(");
+  const payoutQueryIndex = source.indexOf("buildStorePayouts(");
+  assert.ok(
+    resolveIndex !== -1 && pilotCheckIndex !== -1 && storeInfoIndex !== -1,
+    "expected to find all three checkpoints"
+  );
+  assert.ok(resolveIndex < pilotCheckIndex, "pilot check must run after token resolution");
+  assert.ok(pilotCheckIndex < storeInfoIndex, "pilot check must run before the store info lookup");
+  assert.ok(pilotCheckIndex < salesQueryIndex, "pilot check must run before any sales query");
+  assert.ok(pilotCheckIndex < payoutQueryIndex, "pilot check must run before any payout query");
+});
+
+run("access tracking happens only after token validation AND pilot eligibility, never inside resolvePortalStoreId", () => {
+  // resolvePortalStoreId() must only resolve/validate the token -- it
+  // must never record access itself, since at that point pilot
+  // eligibility hasn't been checked yet. (Slice 4A correction: it
+  // previously called trackPortalAccess internally, which meant a
+  // valid token for a non-pilot store still counted as a successful
+  // visit.)
+  const portalAccessSource = stripLineComments(readSource("lib/portalAccess.ts"));
+  const resolveFnMatch = portalAccessSource.match(
+    /export async function resolvePortalStoreId\([\s\S]*?\n\}/
+  );
+  assert.ok(resolveFnMatch, "expected to find resolvePortalStoreId's full body");
+  assert.equal(
+    /recordPortalAccess|trackPortalAccess/.test(resolveFnMatch![0]),
+    false,
+    "resolvePortalStoreId must not record access itself"
+  );
+
+  // recordPortalAccess must still exist, call the same atomic RPC, and
+  // be exported so the caller can invoke it once authorization is
+  // complete.
+  assert.ok(portalAccessSource.includes("export async function recordPortalAccess"));
+  assert.ok(portalAccessSource.includes('rpc("increment_portal_token_access"'));
+
+  // The caller (getCustomerPortalData) must call recordPortalAccess
+  // only after the pilot check, and before any store info lookup or
+  // sales/payout query -- i.e. only once the request is fully
+  // authorized, but still before data is actually queried.
+  const dataPathSource = stripLineComments(readSource("lib/customerPortalSalesData.ts"));
+  const pilotCheckIndex = dataPathSource.indexOf("isStoreAllowedForPilot(storeId)");
+  const trackIndex = dataPathSource.indexOf("recordPortalAccess(tokenId)");
+  const storeInfoIndex = dataPathSource.indexOf("getStoreNameAndRate(storeId)");
+  const salesQueryIndex = dataPathSource.indexOf("buildStoreSalesData(");
+  const payoutQueryIndex = dataPathSource.indexOf("buildStorePayouts(");
+  assert.ok(
+    pilotCheckIndex !== -1 && trackIndex !== -1,
+    "expected both the pilot check and the access-tracking call"
+  );
+  assert.ok(pilotCheckIndex < trackIndex, "access tracking must run after the pilot check");
+  assert.ok(trackIndex < storeInfoIndex, "access tracking must run before the store info lookup");
+  assert.ok(trackIndex < salesQueryIndex, "access tracking must run before any sales query");
+  assert.ok(trackIndex < payoutQueryIndex, "access tracking must run before any payout query");
+});
+
+run("generatePortalLink/regeneratePortalLink enforce the pilot allowlist; revokePortalLink does not", () => {
+  const source = readSource("app/(internal)/stores/[storeId]/actions.ts");
+  // Both generate and regenerate call the shared rotateToken(), which
+  // contains the one isStoreAllowedForPilot() check -- confirm it's
+  // present and runs before the store-existence lookup and before any
+  // token is generated.
+  const pilotCheckIndex = source.indexOf("isStoreAllowedForPilot(storeId)");
+  const storeLookupIndex = source.indexOf('.from("online_stores")');
+  const tokenGenIndex = source.indexOf("generateRawPortalToken()");
+  assert.ok(pilotCheckIndex !== -1, "expected rotateToken() to check isStoreAllowedForPilot");
+  assert.ok(pilotCheckIndex < storeLookupIndex);
+  assert.ok(pilotCheckIndex < tokenGenIndex);
+
+  // revokePortalLink must never reference either feature-flag function --
+  // revoking stays available regardless of the pilot or deployment state.
+  const revokeFnMatch = source.match(
+    /export async function revokePortalLink\([\s\S]*?\n\}/
+  );
+  assert.ok(revokeFnMatch, "expected to find revokePortalLink's full body");
+  assert.equal(/isStoreAllowedForPilot|isPortalGenerationEnabled/.test(revokeFnMatch![0]), false);
+});
+
+run("PortalLinkSection never reveals the configured pilot store id", () => {
+  // Stripped of comments first: this file's own top-of-component doc
+  // comment names PORTAL_PILOT_STORE_ID and says "a single pilot store"
+  // while explaining the design -- neither reaches the browser. What
+  // this test actually guards is the rendered copy and the props/JSX
+  // the component ships, not its author comments.
+  const source = stripLineComments(readSource("components/PortalLinkSection.tsx"));
+  // The component receives only a boolean (pilotEligible), never the
+  // configured PORTAL_PILOT_STORE_ID value itself, and its copy never
+  // names a specific store.
+  assert.equal(source.includes("PORTAL_PILOT_STORE_ID"), false);
+  assert.equal(/pilot store #?\d/i.test(source), false);
+});
+
 run("proxy.ts marks /portal public without weakening any existing prefix", () => {
   const source = readSource("proxy.ts");
   assert.ok(source.includes('"/login"'));

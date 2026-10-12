@@ -20,7 +20,12 @@ import { hashPortalToken, isValidRawPortalTokenFormat } from "@/lib/portalTokens
 // principle already used for staff login (requestLoginCode/
 // verifyLoginCode) and the auth callback route.
 
-async function trackPortalAccess(tokenRowId: number): Promise<void> {
+// Phase 4D, Slice 4A (correction): exported so the caller can track
+// access only once it has fully authorized the request -- token
+// validity AND pilot eligibility -- rather than this module tracking
+// unconditionally as part of resolution. See recordPortalAccess's own
+// comment and resolvePortalStoreId's return type below for why.
+export async function recordPortalAccess(tokenRowId: number): Promise<void> {
   // Best-effort, non-critical: a failure here -- whether a thrown
   // exception (e.g. a network error) or Supabase's own returned `error`
   // property (e.g. a database-side rejection, which .rpc() does not
@@ -52,11 +57,25 @@ async function trackPortalAccess(tokenRowId: number): Promise<void> {
 }
 
 // Resolves a raw portal token to the online_store_id it grants access
-// to, or null if the token is malformed, unknown, inactive, expired, or
-// a database error occurred (fails closed). Never logs or returns the
-// raw token or its hash -- the only thing that ever leaves this function
-// is a plain integer id or null.
-export async function resolvePortalStoreId(rawToken: string): Promise<number | null> {
+// to and the token row's own id, or null if the token is malformed,
+// unknown, inactive, expired, or a database error occurred (fails
+// closed). Never logs or returns the raw token or its hash -- the only
+// things that ever leave this function are two plain integer ids, or
+// null.
+//
+// Phase 4D, Slice 4A (correction): this function deliberately does NOT
+// call recordPortalAccess itself anymore. It previously tracked access
+// unconditionally as soon as a token resolved as active/unexpired --
+// before the caller (getCustomerPortalData) had a chance to check
+// isStoreAllowedForPilot(storeId). That meant a valid, unexpired token
+// for a store outside the pilot still counted as a successful portal
+// visit (incrementing access_count / updating last_accessed_at) even
+// though the request was ultimately rejected and no sales or payout
+// data was ever served. Returning tokenId here lets the caller record
+// access only after every authorization check has passed.
+export async function resolvePortalStoreId(
+  rawToken: string
+): Promise<{ storeId: number; tokenId: number } | null> {
   if (!isValidRawPortalTokenFormat(rawToken)) {
     return null;
   }
@@ -76,7 +95,5 @@ export async function resolvePortalStoreId(rawToken: string): Promise<number | n
     return null;
   }
 
-  await trackPortalAccess(data.id);
-
-  return data.online_store_id;
+  return { storeId: data.online_store_id, tokenId: data.id };
 }

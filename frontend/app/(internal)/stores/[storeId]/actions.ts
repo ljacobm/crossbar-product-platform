@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireStaffSession } from "@/lib/auth";
 import { generateRawPortalToken, hashPortalToken } from "@/lib/portalTokens";
-import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
+import { isPortalGenerationEnabled, isStoreAllowedForPilot } from "@/lib/portalFeatureFlag";
 
 // Phase 4D, Slice 1/2: Customer Fundraising Portal -- staff-only token
 // management. No public portal route or token resolver exists yet; these
@@ -53,6 +53,15 @@ function isValidStoreId(storeId: number): boolean {
 async function rotateToken(storeId: number): Promise<PortalLinkActionState> {
   if (!isValidStoreId(storeId)) {
     return { error: "Invalid store." };
+  }
+
+  // Slice 4A pilot restriction, checked before the store-existence
+  // lookup: narrower than isPortalGenerationEnabled() alone, requiring
+  // an exact match against PORTAL_PILOT_STORE_ID in addition to the
+  // global flag. isStoreAllowedForPilot() already incorporates the
+  // global flag check too -- this one call is the complete gate.
+  if (!isStoreAllowedForPilot(storeId)) {
+    return { error: "This store is not part of the current customer portal pilot." };
   }
 
   const { data: store } = await supabaseAdmin
