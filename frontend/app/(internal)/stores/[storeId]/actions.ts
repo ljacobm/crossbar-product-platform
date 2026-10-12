@@ -10,12 +10,12 @@ import {
   encryptPortalToken,
   decryptPortalToken,
 } from "@/lib/portalTokens";
-import { isPortalGenerationEnabled, isStoreAllowedForPilot } from "@/lib/portalFeatureFlag";
+import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
 
 // Phase 4D, Slice 1/2: Customer Fundraising Portal -- staff-only token
-// management. No public portal route or token resolver exists yet; these
-// three functions are the complete surface for creating, rotating, and
-// revoking a store's portal link.
+// management. These four functions are the complete surface for
+// creating, rotating, retrieving, and revoking a store's portal link,
+// for ANY online_store_id (see the Phase 4E note below).
 //
 // generatePortalLink/regeneratePortalLink are gated by
 // isPortalGenerationEnabled() (lib/portalFeatureFlag.ts), checked right
@@ -26,7 +26,9 @@ import { isPortalGenerationEnabled, isStoreAllowedForPilot } from "@/lib/portalF
 // what prevents generation: a disabled button doesn't stop the
 // underlying Server Action from being called directly, so the real gate
 // has to live here. revokePortalLink is never gated by this flag --
-// revoking carries no risk tied to the portal's deployment state.
+// revoking carries no risk tied to the portal's deployment state, and
+// stays available even during a global shutdown (flag = false), so
+// staff always retain the ability to kill an individual link.
 //
 // generatePortalLink and regeneratePortalLink are both implemented on
 // top of the same atomic rotate_online_store_portal_token() database
@@ -41,6 +43,15 @@ import { isPortalGenerationEnabled, isStoreAllowedForPilot } from "@/lib/portalF
 // entirely: the UPDATE is a harmless no-op when there's nothing to
 // revoke, and exactly one active token always exists afterward, in both
 // the empty-store and already-has-a-token cases.
+//
+// Phase 4E: the Slice 4A single-store pilot restriction
+// (isStoreAllowedForPilot/PORTAL_PILOT_STORE_ID) has been removed from
+// every function in this file. The Customer Fundraising Portal is now
+// available for every online_store_id -- a store having an active link
+// is controlled entirely by whether staff have generated one for it
+// (gated only by the global isPortalGenerationEnabled() flag and plain
+// store-existence), never by a per-store allowlist. A newly created
+// store needs no additional configuration to use the portal.
 
 export type PortalLinkActionState = {
   error: string | null;
@@ -61,15 +72,6 @@ async function rotateToken(storeId: number): Promise<PortalLinkActionState> {
     return { error: "Invalid store." };
   }
 
-  // Slice 4A pilot restriction, checked before the store-existence
-  // lookup: narrower than isPortalGenerationEnabled() alone, requiring
-  // an exact match against PORTAL_PILOT_STORE_ID in addition to the
-  // global flag. isStoreAllowedForPilot() already incorporates the
-  // global flag check too -- this one call is the complete gate.
-  if (!isStoreAllowedForPilot(storeId)) {
-    return { error: "This store is not part of the current customer portal pilot." };
-  }
-
   const { data: store } = await supabaseAdmin
     .from("online_stores")
     .select("id")
@@ -84,10 +86,10 @@ async function rotateToken(storeId: number): Promise<PortalLinkActionState> {
   const tokenHash = hashPortalToken(rawToken);
 
   // Phase 4D, Slice 4B (correction): a valid PORTAL_TOKEN_ENCRYPTION_KEY
-  // is now REQUIRED to create or rotate a link -- encryption is checked,
-  // and must succeed, before rotate_online_store_portal_token is called
-  // at all. This is deliberately placed before the RPC call (which is
-  // what atomically deactivates the old token and inserts the new one):
+  // is REQUIRED to create or rotate a link -- encryption is checked, and
+  // must succeed, before rotate_online_store_portal_token is called at
+  // all. This is deliberately placed before the RPC call (which is what
+  // atomically deactivates the old token and inserts the new one):
   // failing here means neither side effect has happened yet, so a
   // missing/invalid key or an encryption failure can never deactivate an
   // existing working link, and can never create a new token that would
@@ -153,10 +155,14 @@ export async function regeneratePortalLink(storeId: number): Promise<PortalLinkA
 }
 
 // Marks the current active token inactive. Future portal access becomes
-// invalid the moment this update commits -- the (not-yet-built, Slice 2)
-// portal resolver will always look up active = true directly against the
-// database, with no caching layer in between, so there is no additional
-// propagation step needed here.
+// invalid the moment this update commits -- the portal resolver
+// (lib/portalAccess.ts) always looks up active = true directly against
+// the database, with no caching layer in between, so there is no
+// additional propagation step needed here. Never gated by
+// isPortalGenerationEnabled() -- revoking stays available even during a
+// global shutdown; existing tokens are not automatically deleted when
+// the flag is turned off, so staff need to retain the ability to kill
+// an individual link regardless of the flag's state.
 export async function revokePortalLink(storeId: number): Promise<PortalLinkActionState> {
   await requireStaffSession();
 
@@ -202,28 +208,31 @@ export async function revokePortalLink(storeId: number): Promise<PortalLinkActio
 // store authorization here is the same isValidStoreId()
 // store-existence check used throughout, not a new, narrower check.
 //
-// Phase 4D, Slice 4B (correction): also gated by isStoreAllowedForPilot()
-// -- while the pilot restriction is active, a non-pilot store's staff
-// must not be able to retrieve its encrypted link either, even though
-// the link already exists and was already created under that same
-// gate. This mirrors the Slice 4A requirement that the customer-facing
-// data path re-checks pilot eligibility on every request rather than
-// "grandfathering" a link that was valid before the restriction existed
-// or changed -- staff retrieval gets the identical treatment, using the
-// exact same predicate (isStoreAllowedForPilot already incorporates the
-// global isPortalGenerationEnabled() check too), so the two surfaces
-// can never drift apart.
+// Phase 4E (correction): gated by isPortalGenerationEnabled(), checked
+// right after requireStaffSession() and before any store-id validation
+// or database query -- while the global switch is off, retrieval is
+// blocked right alongside generate/regenerate and public customer
+// access, the same way those are already gated. revokePortalLink is
+// the one action that intentionally stays available during a shutdown
+// (disabling an existing link carries no risk tied to the portal's
+// deployment state); retrieval is no longer treated the same way,
+// since copying out a working link during an emergency shutdown would
+// let staff hand out access the shutdown was meant to prevent.
+//
+// Phase 4E: works for any online_store_id -- the Slice 4A pilot
+// restriction (isStoreAllowedForPilot) has been removed and is not
+// replaced by any other per-store allowlist.
 export async function getActivePortalLink(
   storeId: number
 ): Promise<{ url: string | null; error: string | null }> {
   await requireStaffSession();
 
-  if (!isValidStoreId(storeId)) {
-    return { url: null, error: "Invalid store." };
+  if (!isPortalGenerationEnabled()) {
+    return { url: null, error: "The customer portal is not currently enabled." };
   }
 
-  if (!isStoreAllowedForPilot(storeId)) {
-    return { url: null, error: "This store is not part of the current customer portal pilot." };
+  if (!isValidStoreId(storeId)) {
+    return { url: null, error: "Invalid store." };
   }
 
   const nowIso = new Date().toISOString();

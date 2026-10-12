@@ -102,6 +102,42 @@ run("buildStoreSalesData always filters by the caller-supplied online_store_id",
   assert.ok(source.includes('.eq("online_store_id", storeId)'));
 });
 
+run("financial queries are scoped at the line-item level (shopify_order_line_items.online_store_id), never by a whole Shopify order's store", () => {
+  // A single Shopify order can contain line items belonging to
+  // different online stores -- scoping by the order's own store (if
+  // orders even had one) or by order total would leak another store's
+  // sales into this store's totals. buildStoreSalesData must query
+  // shopify_order_line_items directly and filter THAT table's
+  // online_store_id, with shopify_orders joined only for display
+  // context (order number/date/cancellation), never as the scoping
+  // table itself.
+  const source = stripLineComments(readSource("lib/salesCalculations.ts"));
+  const fnMatch = source.match(/export async function buildStoreSalesData\([\s\S]*?\n\}/);
+  assert.ok(fnMatch, "expected to find buildStoreSalesData's full body");
+  const body = fnMatch![0];
+
+  const fromIndex = body.indexOf('.from("shopify_order_line_items")');
+  const filterIndex = body.indexOf('.eq("online_store_id", storeId)');
+  assert.ok(fromIndex !== -1, "expected the query to target shopify_order_line_items");
+  assert.ok(filterIndex !== -1 && filterIndex > fromIndex, "expected the online_store_id filter on that query");
+
+  // shopify_orders is joined (for order_number/order_created_at/
+  // cancelled_at display fields only) but must never itself be the
+  // `.from()` table, and must never be filtered by online_store_id --
+  // if it were, that would imply orders carry their own store id,
+  // which would be the wrong scoping granularity for a cross-store
+  // order.
+  assert.equal(body.includes('.from("shopify_orders")'), false);
+
+  // buildStorePayouts is also scoped by the same resolved storeId, on
+  // its own dedicated table -- payouts are never derived from Shopify
+  // orders at all.
+  const payoutFnMatch = source.match(/export async function buildStorePayouts\([\s\S]*?\n\}/);
+  assert.ok(payoutFnMatch, "expected to find buildStorePayouts's full body");
+  assert.ok(payoutFnMatch![0].includes('.from("online_store_payouts")'));
+  assert.ok(payoutFnMatch![0].includes('.eq("online_store_id", storeId)'));
+});
+
 run("customerPortalSalesData.ts uses an explicit field-by-field allowlist mapper, no unsafe casts", () => {
   const source = readSource("lib/customerPortalSalesData.ts");
   assert.ok(source.includes("function toCustomerSalesData(data: StoreSalesData): CustomerSalesData"));
@@ -199,34 +235,78 @@ run("customer portal page checks the feature flag before resolving any token", (
   assert.ok(flagCheckIndex < resolveIndex);
 });
 
-run("getCustomerPortalData enforces the pilot allowlist after token resolution, before any sales/payout query", () => {
+run("Phase 4E: no per-store pilot allowlist remains anywhere in the portal source", () => {
+  // The single-store pilot restriction (isStoreAllowedForPilot,
+  // PORTAL_PILOT_STORE_ID, and the "pilot" vocabulary it introduced) is
+  // fully removed, not replaced by any other per-store check --
+  // confirming its absence here, in one place, is a stronger guard than
+  // scattering "must not contain X" assertions across every individual
+  // test below.
+  const files = [
+    "lib/portalFeatureFlag.ts",
+    "lib/portalFeatureFlagLogic.ts",
+    "lib/customerPortalSalesData.ts",
+    "app/(internal)/stores/[storeId]/actions.ts",
+    "app/(internal)/stores/[storeId]/overview/page.tsx",
+    "components/PortalLinkSection.tsx",
+  ];
+  for (const file of files) {
+    const source = stripLineComments(readSource(file));
+    assert.equal(
+      source.includes("isStoreAllowedForPilot"),
+      false,
+      `${file} must not reference isStoreAllowedForPilot`
+    );
+    assert.equal(
+      source.includes("PORTAL_PILOT_STORE_ID"),
+      false,
+      `${file} must not reference PORTAL_PILOT_STORE_ID`
+    );
+    assert.equal(
+      source.includes("pilotEligible"),
+      false,
+      `${file} must not reference a pilotEligible prop/value`
+    );
+  }
+});
+
+run("getCustomerPortalData records access and serves data for the storeId resolved from ANY valid token, before any sales/payout query", () => {
+  // Phase 4E: there is no pilot check left to enforce an ordering
+  // against -- this test instead confirms the remaining ordering
+  // (token resolution -> access tracking -> store info -> sales/payout
+  // queries) still holds for every store, not just one allowlisted id.
   // Stripped of comments first: toCustomerPayout's own doc comment
   // mentions "buildStorePayouts()" (describing the shape it maps from)
   // well before the real call site, which would otherwise make this
   // check see a false, earlier "payout query" that was never a query.
   const source = stripLineComments(readSource("lib/customerPortalSalesData.ts"));
   const resolveIndex = source.indexOf("resolvePortalStoreId(rawToken)");
-  const pilotCheckIndex = source.indexOf("isStoreAllowedForPilot(storeId)");
+  const trackIndex = source.indexOf("recordPortalAccess(tokenId)");
   const storeInfoIndex = source.indexOf("getStoreNameAndRate(storeId)");
   const salesQueryIndex = source.indexOf("buildStoreSalesData(");
   const payoutQueryIndex = source.indexOf("buildStorePayouts(");
   assert.ok(
-    resolveIndex !== -1 && pilotCheckIndex !== -1 && storeInfoIndex !== -1,
-    "expected to find all three checkpoints"
+    resolveIndex !== -1 && trackIndex !== -1 && storeInfoIndex !== -1,
+    "expected to find all checkpoints"
   );
-  assert.ok(resolveIndex < pilotCheckIndex, "pilot check must run after token resolution");
-  assert.ok(pilotCheckIndex < storeInfoIndex, "pilot check must run before the store info lookup");
-  assert.ok(pilotCheckIndex < salesQueryIndex, "pilot check must run before any sales query");
-  assert.ok(pilotCheckIndex < payoutQueryIndex, "pilot check must run before any payout query");
+  assert.ok(resolveIndex < trackIndex, "access tracking must run after token resolution");
+  assert.ok(trackIndex < storeInfoIndex, "access tracking must run before the store info lookup");
+  assert.ok(trackIndex < salesQueryIndex, "access tracking must run before any sales query");
+  assert.ok(trackIndex < payoutQueryIndex, "access tracking must run before any payout query");
+
+  // getStoreNameAndRate/buildStoreSalesData/buildStorePayouts are all
+  // called with the SAME storeId variable resolved from the token --
+  // never a literal, never a different identifier -- so isolation holds
+  // for whichever store the token happens to belong to.
+  assert.ok(source.includes("getStoreNameAndRate(storeId)"));
+  assert.ok(source.includes("buildStoreSalesData(storeId, store.fundraiserRate, range)"));
+  assert.ok(source.includes("buildStorePayouts(storeId)"));
 });
 
-run("access tracking happens only after token validation AND pilot eligibility, never inside resolvePortalStoreId", () => {
+run("access tracking never happens inside resolvePortalStoreId itself, for any token", () => {
   // resolvePortalStoreId() must only resolve/validate the token -- it
-  // must never record access itself, since at that point pilot
-  // eligibility hasn't been checked yet. (Slice 4A correction: it
-  // previously called trackPortalAccess internally, which meant a
-  // valid token for a non-pilot store still counted as a successful
-  // visit.)
+  // must never record access itself. (Slice 4A correction, still true
+  // under Phase 4E: it previously called trackPortalAccess internally.)
   const portalAccessSource = stripLineComments(readSource("lib/portalAccess.ts"));
   const resolveFnMatch = portalAccessSource.match(
     /export async function resolvePortalStoreId\([\s\S]*?\n\}/
@@ -239,46 +319,25 @@ run("access tracking happens only after token validation AND pilot eligibility, 
   );
 
   // recordPortalAccess must still exist, call the same atomic RPC, and
-  // be exported so the caller can invoke it once authorization is
-  // complete.
+  // be exported so the caller can invoke it once the token has
+  // resolved.
   assert.ok(portalAccessSource.includes("export async function recordPortalAccess"));
   assert.ok(portalAccessSource.includes('rpc("increment_portal_token_access"'));
-
-  // The caller (getCustomerPortalData) must call recordPortalAccess
-  // only after the pilot check, and before any store info lookup or
-  // sales/payout query -- i.e. only once the request is fully
-  // authorized, but still before data is actually queried.
-  const dataPathSource = stripLineComments(readSource("lib/customerPortalSalesData.ts"));
-  const pilotCheckIndex = dataPathSource.indexOf("isStoreAllowedForPilot(storeId)");
-  const trackIndex = dataPathSource.indexOf("recordPortalAccess(tokenId)");
-  const storeInfoIndex = dataPathSource.indexOf("getStoreNameAndRate(storeId)");
-  const salesQueryIndex = dataPathSource.indexOf("buildStoreSalesData(");
-  const payoutQueryIndex = dataPathSource.indexOf("buildStorePayouts(");
-  assert.ok(
-    pilotCheckIndex !== -1 && trackIndex !== -1,
-    "expected both the pilot check and the access-tracking call"
-  );
-  assert.ok(pilotCheckIndex < trackIndex, "access tracking must run after the pilot check");
-  assert.ok(trackIndex < storeInfoIndex, "access tracking must run before the store info lookup");
-  assert.ok(trackIndex < salesQueryIndex, "access tracking must run before any sales query");
-  assert.ok(trackIndex < payoutQueryIndex, "access tracking must run before any payout query");
 });
 
-run("generatePortalLink/regeneratePortalLink enforce the pilot allowlist; revokePortalLink does not", () => {
+run("generatePortalLink/regeneratePortalLink work for any valid store id; revokePortalLink is never gated by the global flag", () => {
   const source = readSource("app/(internal)/stores/[storeId]/actions.ts");
-  // Both generate and regenerate call the shared rotateToken(), which
-  // contains the one isStoreAllowedForPilot() check -- confirm it's
-  // present and runs before the store-existence lookup and before any
+  // rotateToken() (shared by generate/regenerate) validates and looks
+  // up the store purely by the storeId parameter -- no per-store
+  // allowlist check runs before the store-existence lookup or before a
   // token is generated.
-  const pilotCheckIndex = source.indexOf("isStoreAllowedForPilot(storeId)");
-  const storeLookupIndex = source.indexOf('.from("online_stores")');
-  const tokenGenIndex = source.indexOf("generateRawPortalToken()");
-  assert.ok(pilotCheckIndex !== -1, "expected rotateToken() to check isStoreAllowedForPilot");
-  assert.ok(pilotCheckIndex < storeLookupIndex);
-  assert.ok(pilotCheckIndex < tokenGenIndex);
+  const rotateFnMatch = source.match(/async function rotateToken\([\s\S]*?\n\}/);
+  assert.ok(rotateFnMatch, "expected to find rotateToken's full body");
+  assert.equal(rotateFnMatch![0].includes("isStoreAllowedForPilot"), false);
+  assert.ok(rotateFnMatch![0].includes('.eq("id", storeId)'));
 
-  // revokePortalLink must never reference either feature-flag function --
-  // revoking stays available regardless of the pilot or deployment state.
+  // revokePortalLink must never reference the feature-flag function --
+  // revoking stays available regardless of the global shutdown state.
   const revokeFnMatch = source.match(
     /export async function revokePortalLink\([\s\S]*?\n\}/
   );
@@ -286,18 +345,73 @@ run("generatePortalLink/regeneratePortalLink enforce the pilot allowlist; revoke
   assert.equal(/isStoreAllowedForPilot|isPortalGenerationEnabled/.test(revokeFnMatch![0]), false);
 });
 
-run("PortalLinkSection never reveals the configured pilot store id", () => {
-  // Stripped of comments first: this file's own top-of-component doc
-  // comment names PORTAL_PILOT_STORE_ID and says "a single pilot store"
-  // while explaining the design -- neither reaches the browser. What
-  // this test actually guards is the rendered copy and the props/JSX
-  // the component ships, not its author comments.
+run("PortalLinkSection shows the same Customer Portal section for every store, with no per-store id ever rendered as a restriction", () => {
   const source = stripLineComments(readSource("components/PortalLinkSection.tsx"));
-  // The component receives only a boolean (pilotEligible), never the
-  // configured PORTAL_PILOT_STORE_ID value itself, and its copy never
-  // names a specific store.
   assert.equal(source.includes("PORTAL_PILOT_STORE_ID"), false);
   assert.equal(/pilot store #?\d/i.test(source), false);
+  // generationEnabled is the only prop gating the Generate/Regenerate
+  // buttons -- storeId itself is used only to call the Server Actions,
+  // never compared against an allowlist or used to decide eligibility.
+  assert.ok(source.includes("disabled={isPending || !generationEnabled}"));
+});
+
+run("PortalLinkSection's Copy Active Link button is also disabled while the global flag is off (Phase 4E correction)", () => {
+  const source = stripLineComments(readSource("components/PortalLinkSection.tsx"));
+  assert.ok(source.includes("disabled={isPending || !generationEnabled || !canRetrieve}"));
+});
+
+run("generatePortalLink and regeneratePortalLink both refuse to run rotateToken() when the global flag is disabled", () => {
+  const source = readSource("app/(internal)/stores/[storeId]/actions.ts");
+  for (const fnName of ["generatePortalLink", "regeneratePortalLink"]) {
+    const fnMatch = source.match(
+      new RegExp(`export async function ${fnName}\\([\\s\\S]*?\\n\\}`)
+    );
+    assert.ok(fnMatch, `expected to find ${fnName}'s full body`);
+    const body = fnMatch![0];
+    const flagCheckIndex = body.indexOf("isPortalGenerationEnabled()");
+    const rotateCallIndex = body.indexOf("rotateToken(storeId)");
+    assert.ok(flagCheckIndex !== -1 && rotateCallIndex !== -1, `expected both checkpoints in ${fnName}`);
+    assert.ok(flagCheckIndex < rotateCallIndex, `${fnName} must check the flag before calling rotateToken`);
+  }
+});
+
+run("no store id anywhere in the portal source is special-cased (e.g. the former pilot store, 93)", () => {
+  // Every production store id this app will ever assign is a positive
+  // integer, so a literal standalone "93" (the former pilot store)
+  // appearing as its own token in the generate/retrieve/revoke/data
+  // paths would indicate a leftover special case. Comments are allowed
+  // to mention it historically (several already do, describing the
+  // removed restriction); only the executable source is checked here.
+  const files = [
+    "app/(internal)/stores/[storeId]/actions.ts",
+    "lib/customerPortalSalesData.ts",
+    "lib/portalAccess.ts",
+    "lib/portalFeatureFlag.ts",
+    "lib/portalFeatureFlagLogic.ts",
+    "components/PortalLinkSection.tsx",
+  ];
+  for (const file of files) {
+    const source = stripLineComments(readSource(file));
+    assert.equal(
+      /\b93\b/.test(source),
+      false,
+      `${file} must not special-case any specific store id`
+    );
+  }
+});
+
+run("getActivePortalLink's encrypted retrieval path has no store-specific branch -- it resolves purely from the storeId argument", () => {
+  const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/actions.ts"));
+  const fnMatch = source.match(
+    /export async function getActivePortalLink\([\s\S]*?\n\}/
+  );
+  assert.ok(fnMatch, "expected to find getActivePortalLink's full body");
+  const body = fnMatch![0];
+  // Every conditional in this function checks either the staff session,
+  // the storeId's own validity/format, or the query result -- never a
+  // comparison against a specific id.
+  assert.equal(/storeId\s*===\s*\d/.test(body), false);
+  assert.equal(/storeId\s*==\s*\d/.test(body), false);
 });
 
 run("proxy.ts marks /portal public without weakening any existing prefix", () => {
@@ -390,7 +504,7 @@ run("existing staff Sales page file is untouched by this slice", () => {
   assert.ok(source.includes("requireStaffSession") === false); // page itself never calls it directly -- unchanged from before
 });
 
-run("getActivePortalLink checks staff auth, then the pilot allowlist, then active status and expiry, in that order", () => {
+run("getActivePortalLink checks staff auth, then the global flag, before any database query, and re-checks active status and expiry, for any store", () => {
   const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/actions.ts"));
   const fnMatch = source.match(
     /export async function getActivePortalLink\([\s\S]*?\n\}/
@@ -399,31 +513,37 @@ run("getActivePortalLink checks staff auth, then the pilot allowlist, then activ
   const body = fnMatch![0];
 
   const sessionIndex = body.indexOf("requireStaffSession()");
-  const pilotCheckIndex = body.indexOf("isStoreAllowedForPilot(storeId)");
+  const flagCheckIndex = body.indexOf("isPortalGenerationEnabled()");
   const queryIndex = body.indexOf('.from("online_store_portal_tokens")');
-  assert.ok(sessionIndex !== -1 && pilotCheckIndex !== -1 && queryIndex !== -1);
-  assert.ok(sessionIndex < pilotCheckIndex, "requireStaffSession() must run before the pilot check");
-  assert.ok(pilotCheckIndex < queryIndex, "the pilot check must run before the token lookup");
+  assert.ok(sessionIndex !== -1 && flagCheckIndex !== -1 && queryIndex !== -1);
+  assert.ok(sessionIndex < flagCheckIndex, "requireStaffSession() must run before the global-flag check");
+  assert.ok(flagCheckIndex < queryIndex, "the global-flag check must run before the token lookup");
+  assert.equal(body.includes("isStoreAllowedForPilot"), false);
+  assert.ok(body.includes(".eq(\"online_store_id\", storeId)"));
 
   assert.ok(body.includes('.eq("active", true)'));
   assert.ok(body.includes("expires_at.is.null"));
   assert.ok(body.includes("expires_at.gt."));
 });
 
-run("getActivePortalLink rejects a non-pilot store, independent of whether an active token exists for it", () => {
+run("getActivePortalLink is blocked by the global shutdown flag (Phase 4E correction), unlike revokePortalLink", () => {
   const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/actions.ts"));
-  const fnMatch = source.match(
+  const retrieveFnMatch = source.match(
     /export async function getActivePortalLink\([\s\S]*?\n\}/
   );
-  assert.ok(fnMatch);
-  const body = fnMatch![0];
-  // The pilot check must be a real, early return -- not merely
-  // referenced somewhere in the function -- so a non-pilot store's
-  // request never reaches the token query at all.
+  assert.ok(retrieveFnMatch, "expected to find getActivePortalLink's full body");
   assert.ok(
-    /if\s*\(!isStoreAllowedForPilot\(storeId\)\)\s*\{\s*return/.test(body),
-    "expected an early return guarded by !isStoreAllowedForPilot(storeId)"
+    /if\s*\(!isPortalGenerationEnabled\(\)\)\s*\{\s*return/.test(retrieveFnMatch![0]),
+    "expected an early return guarded by !isPortalGenerationEnabled()"
   );
+
+  // Disable Link must remain the one exception that stays available
+  // during a shutdown.
+  const revokeFnMatch = source.match(
+    /export async function revokePortalLink\([\s\S]*?\n\}/
+  );
+  assert.ok(revokeFnMatch, "expected to find revokePortalLink's full body");
+  assert.equal(revokeFnMatch![0].includes("isPortalGenerationEnabled"), false);
 });
 
 run("getActivePortalLink never returns the encryption key or a decryption failure's internal detail", () => {

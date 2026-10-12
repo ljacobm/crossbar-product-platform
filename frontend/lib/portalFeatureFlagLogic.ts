@@ -12,41 +12,26 @@
 // guard. Each function here takes an explicit env object rather than
 // reading `process.env` directly, so tests can pass a fake env without
 // mutating global process.env between cases.
+//
+// Phase 4E: PORTAL_PILOT_STORE_ID and the per-store allowlist it backed
+// (getPilotAllowedStoreIdLogic/isStoreAllowedForPilotLogic, formerly
+// here) are removed -- the Customer Fundraising Portal is now available
+// for every online_store_id, not a single pilot store, and is not
+// replaced by any other per-store allowlist. PORTAL_PUBLIC_ROUTE_ENABLED
+// is the only remaining gate: a single global switch, checked by exact
+// string comparison against "true", that fails closed (disabled) when
+// unset or set to anything else.
 
 export type PortalFeatureEnv = {
   PORTAL_PUBLIC_ROUTE_ENABLED?: string;
-  PORTAL_PILOT_STORE_ID?: string;
   // Index signature so this type structurally matches NodeJS.ProcessEnv
   // (also index-signature-shaped) without TypeScript's "weak type" rule
-  // (all-optional-properties types require at least one matching named
-  // property, not just index-signature compatibility) rejecting the two
-  // as unrelated.
+  // (an all-optional-properties type needs at least one matching named
+  // property, not just index-signature compatibility, to be considered
+  // related to another type) rejecting the two as unrelated.
   [key: string]: string | undefined;
 };
 
 export function isPortalGenerationEnabledLogic(env: PortalFeatureEnv): boolean {
   return env.PORTAL_PUBLIC_ROUTE_ENABLED === "true";
-}
-
-// Fails closed on every kind of misconfiguration: unset, non-numeric,
-// zero, negative, or non-integer all resolve to "no store is allowed" --
-// never to "every store is allowed" and never to a thrown error that
-// could surface an internal detail.
-export function getPilotAllowedStoreIdLogic(env: PortalFeatureEnv): number | null {
-  const raw = env.PORTAL_PILOT_STORE_ID;
-  if (!raw) return null;
-
-  const parsed = Number(raw);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
-
-  return parsed;
-}
-
-export function isStoreAllowedForPilotLogic(storeId: number, env: PortalFeatureEnv): boolean {
-  if (!isPortalGenerationEnabledLogic(env)) return false;
-
-  const allowedStoreId = getPilotAllowedStoreIdLogic(env);
-  if (allowedStoreId === null) return false;
-
-  return storeId === allowedStoreId;
 }

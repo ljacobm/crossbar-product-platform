@@ -1,33 +1,34 @@
 import "server-only";
-import {
-  isPortalGenerationEnabledLogic,
-  isStoreAllowedForPilotLogic,
-} from "@/lib/portalFeatureFlagLogic";
+import { isPortalGenerationEnabledLogic } from "@/lib/portalFeatureFlagLogic";
 
-// Phase 4D, Slice 2/4A: the actual, enforced gates on portal token
+// Phase 4D, Slice 2: the actual, enforced gate on portal token
 // generation/regeneration and on the customer data-serving path -- not
-// just client-side UI disables. The real logic lives in
+// just a client-side UI disable. The real logic lives in
 // lib/portalFeatureFlagLogic.ts, a plain module without this guard (so
 // it stays independently testable); this file is the only one
 // application code should import from, since it's the one that
-// guarantees neither PORTAL_PUBLIC_ROUTE_ENABLED nor
-// PORTAL_PILOT_STORE_ID can ever reach the client bundle. Both env vars
-// are deliberately NOT prefixed NEXT_PUBLIC_ for exactly that reason.
+// guarantees PORTAL_PUBLIC_ROUTE_ENABLED can never reach the client
+// bundle. The env var is deliberately NOT prefixed NEXT_PUBLIC_ for
+// exactly that reason.
 //
 // isPortalGenerationEnabled() defaults to disabled (false) whenever
 // PORTAL_PUBLIC_ROUTE_ENABLED is unset or anything other than exactly
 // "true", so a missing/misconfigured environment variable fails closed,
-// not open.
+// not open. This is the one global switch for the whole portal: when
+// true, every valid online_store_id's link management and customer
+// data-serving work normally; when false, public access is denied and
+// staff can no longer generate or regenerate links (revoking an
+// existing link is never gated by this flag -- see
+// app/(internal)/stores/[storeId]/actions.ts).
 //
-// isStoreAllowedForPilot(storeId) is a second, narrower, independent
-// gate on top of the first: true only when the global flag is also on
-// AND storeId exactly matches PORTAL_PILOT_STORE_ID (a single internal
-// online_stores.id, never a store name). Every caller -- staff link
-// generation and the customer data-serving path alike -- calls this one
-// function rather than re-implementing the "both conditions" check, so
-// the two can never drift apart from each other.
+// Phase 4E: the single-store pilot restriction
+// (isStoreAllowedForPilot/PORTAL_PILOT_STORE_ID) has been removed. The
+// portal is available for every online_store_id by default -- a store
+// having an active link is controlled entirely by whether staff have
+// generated one for it, never by its id. This function is not replaced
+// by any other per-store allowlist.
 //
-// The only thing either function exposes outward is its boolean return
+// The only thing this function exposes outward is its boolean return
 // value -- not a secret, just a yes/no -- which the Overview page (a
 // Server Component) reads and passes down to PortalLinkSection (a
 // Client Component) as an ordinary prop, so the UI's disabled state and
@@ -35,8 +36,4 @@ import {
 // other.
 export function isPortalGenerationEnabled(): boolean {
   return isPortalGenerationEnabledLogic(process.env);
-}
-
-export function isStoreAllowedForPilot(storeId: number): boolean {
-  return isStoreAllowedForPilotLogic(storeId, process.env);
 }

@@ -1,7 +1,7 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { resolvePortalStoreId, recordPortalAccess } from "@/lib/portalAccess";
-import { isPortalGenerationEnabled, isStoreAllowedForPilot } from "@/lib/portalFeatureFlag";
+import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
 import { buildStoreSalesData, buildStorePayouts } from "@/lib/salesCalculations";
 import type { DateRange, StoreSalesData } from "@/lib/onlineStoreSalesTypes";
 
@@ -25,26 +25,23 @@ import type { DateRange, StoreSalesData } from "@/lib/onlineStoreSalesTypes";
 // token somehow existed (it can't yet, since generation has never been
 // enabled), the route would still refuse to serve until the flag is on.
 //
-// Phase 4D, Slice 4A: a second, narrower check, isStoreAllowedForPilot(),
-// runs AFTER the token has been resolved to a storeId and BEFORE any
-// sales or payout query -- never on a caller-supplied id, only on the
-// id this function already derived from the validated token moments
-// earlier. This means an existing, otherwise-valid token for a store
-// outside the pilot is refused every single time, not just at the
-// moment it was issued -- there is no "grandfathering" of a token that
-// was valid before the pilot restriction existed or before it changes.
-// isStoreAllowedForPilot() already re-checks isPortalGenerationEnabled()
-// internally too; keeping the plain check above as well means the
-// cheapest possible rejection (no token hash lookup, no access-tracking
-// write) still happens first when the feature is entirely off.
+// Phase 4D, Slice 4A (correction): resolvePortalStoreId() does not
+// record access itself -- it only validates and resolves the token.
+// recordPortalAccess(tokenId) is called here, explicitly, once the
+// token has resolved, before any sales or payout query -- a token that
+// fails to resolve (invalid/unknown/revoked/expired) must never
+// increment access_count / update last_accessed_at, since it was never
+// actually served any data.
 //
-// Phase 4D, Slice 4A (correction): resolvePortalStoreId() no longer
-// records access itself -- it only validates and resolves the token.
-// recordPortalAccess(tokenId) is called here, explicitly, only after
-// isStoreAllowedForPilot(storeId) has passed. A token that is otherwise
-// valid but for a store outside the pilot must never increment
-// access_count / update last_accessed_at -- it was never actually
-// served any data.
+// Phase 4E: the Slice 4A single-store pilot restriction
+// (isStoreAllowedForPilot) that used to run here, between token
+// resolution and access tracking, has been removed. The portal now
+// works for every online_store_id the token resolves to -- isolation
+// is enforced purely by storeId coming only from resolvePortalStoreId()
+// (never from a caller-supplied value) and by every downstream query
+// (getStoreNameAndRate/buildStoreSalesData/buildStorePayouts) being
+// scoped to that same storeId, not by a separate allowlist of which
+// stores are allowed to exist.
 
 // ---------------------------------------------------------------------
 // Customer-facing types -- a deliberate, separate set from
@@ -178,10 +175,10 @@ async function getStoreNameAndRate(
 }
 
 // Returns null for every failure case -- invalid/unknown/revoked/expired
-// token, the feature flag being off, the store being outside the pilot,
-// or a missing store -- so the portal page can render one generic
-// "unavailable" message without distinguishing why, the same
-// non-disclosure principle used throughout this app's auth flows.
+// token, the feature flag being off, or a missing store -- so the
+// portal page can render one generic "unavailable" message without
+// distinguishing why, the same non-disclosure principle used throughout
+// this app's auth flows.
 export async function getCustomerPortalData(
   rawToken: string,
   range: DateRange
@@ -196,17 +193,9 @@ export async function getCustomerPortalData(
   }
   const { storeId, tokenId } = resolved;
 
-  // Pilot restriction: enforced here, on the storeId this function
-  // itself just resolved from the token -- never on anything a caller
-  // could supply. No sales or payout query has happened yet at this
-  // point.
-  if (!isStoreAllowedForPilot(storeId)) {
-    return null;
-  }
-
-  // Access is only ever recorded once every check above has passed --
-  // a rejected non-pilot token must never count as a successful portal
-  // visit. See resolvePortalStoreId's own comment in portalAccess.ts
+  // Access is only ever recorded once the token has resolved to a real,
+  // active, unexpired store -- never for a token that failed to
+  // resolve. See resolvePortalStoreId's own comment in portalAccess.ts
   // for why this moved out of that function.
   await recordPortalAccess(tokenId);
 

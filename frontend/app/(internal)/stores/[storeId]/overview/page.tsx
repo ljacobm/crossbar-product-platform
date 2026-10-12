@@ -1,6 +1,6 @@
 import { getOnlineStoreById } from "@/lib/onlineStoreData";
 import { getPortalLinkStatus } from "@/lib/onlineStorePortalData";
-import { isPortalGenerationEnabled, isStoreAllowedForPilot } from "@/lib/portalFeatureFlag";
+import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
 import PortalLinkSection from "@/components/PortalLinkSection";
 
 export default async function StoreOverviewPage({
@@ -56,7 +56,6 @@ export default async function StoreOverviewPage({
         storeId={store.id}
         initialStatus={portalLinkStatus}
         generationEnabled={isPortalGenerationEnabled()}
-        pilotEligible={isStoreAllowedForPilot(store.id)}
       />
     </>
   );
