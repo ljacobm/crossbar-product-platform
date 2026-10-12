@@ -25,6 +25,7 @@ const PUBLIC_PATH_PREFIXES = [
   "/login",
   "/auth/callback",
   "/api/webhooks/shopify", // HMAC-verified independently; no Supabase session exists for Shopify's server-to-server calls.
+  "/portal", // Customer Fundraising Portal (Phase 4D). No Supabase session exists for a customer visitor -- the bearer token in the URL is the authorization, validated independently inside lib/portalAccess.ts on every request.
 ];
 
 function isPublicPath(pathname: string): boolean {
