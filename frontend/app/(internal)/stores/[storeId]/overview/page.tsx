@@ -1,4 +1,7 @@
 import { getOnlineStoreById } from "@/lib/onlineStoreData";
+import { getPortalLinkStatus } from "@/lib/onlineStorePortalData";
+import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
+import PortalLinkSection from "@/components/PortalLinkSection";
 
 export default async function StoreOverviewPage({
   params,
@@ -16,34 +19,44 @@ export default async function StoreOverviewPage({
   // parent-to-child data plumbing this app doesn't use anywhere else.
   if (!store) return null;
 
+  const portalLinkStatus = await getPortalLinkStatus(store.id);
+
   return (
-    <div className="rounded-xl bg-white p-6 shadow">
-      <h2 className="text-lg font-semibold">Store Information</h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Read-only foundation for future Online Store Creator 3.0 features.
-      </p>
+    <>
+      <div className="rounded-xl bg-white p-6 shadow">
+        <h2 className="text-lg font-semibold">Store Information</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Read-only foundation for future Online Store Creator 3.0 features.
+        </p>
 
-      <dl className="mt-5 max-w-md space-y-3 text-sm">
-        <div className="flex justify-between gap-4">
-          <dt className="text-slate-500">Store Name</dt>
-          <dd className="font-medium text-slate-900">{store.name}</dd>
-        </div>
+        <dl className="mt-5 max-w-md space-y-3 text-sm">
+          <div className="flex justify-between gap-4">
+            <dt className="text-slate-500">Store Name</dt>
+            <dd className="font-medium text-slate-900">{store.name}</dd>
+          </div>
 
-        <div className="flex justify-between gap-4">
-          <dt className="text-slate-500">Vendor / Team Tag</dt>
-          <dd className="font-medium text-slate-900">{store.vendor_team_tag || "-"}</dd>
-        </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-slate-500">Vendor / Team Tag</dt>
+            <dd className="font-medium text-slate-900">{store.vendor_team_tag || "-"}</dd>
+          </div>
 
-        <div className="flex justify-between gap-4">
-          <dt className="text-slate-500">Status</dt>
-          <dd className="font-medium text-slate-900">{store.active ? "Active" : "Inactive"}</dd>
-        </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-slate-500">Status</dt>
+            <dd className="font-medium text-slate-900">{store.active ? "Active" : "Inactive"}</dd>
+          </div>
 
-        <div className="flex justify-between gap-4">
-          <dt className="text-slate-500">Internal Store ID</dt>
-          <dd className="font-mono text-slate-900">{store.id}</dd>
-        </div>
-      </dl>
-    </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-slate-500">Internal Store ID</dt>
+            <dd className="font-mono text-slate-900">{store.id}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <PortalLinkSection
+        storeId={store.id}
+        initialStatus={portalLinkStatus}
+        generationEnabled={isPortalGenerationEnabled()}
+      />
+    </>
   );
 }
