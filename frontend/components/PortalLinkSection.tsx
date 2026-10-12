@@ -5,6 +5,7 @@ import {
   generatePortalLink,
   regeneratePortalLink,
   revokePortalLink,
+  getActivePortalLink,
   type PortalLinkActionState,
 } from "@/app/(internal)/stores/[storeId]/actions";
 import type { PortalLinkStatus } from "@/lib/onlineStorePortalData";
@@ -45,6 +46,18 @@ import type { PortalLinkStatus } from "@/lib/onlineStorePortalData";
 // from "the feature is on, but not for this store," and conflating them
 // into one boolean would lose that distinction for staff troubleshooting
 // a specific store.
+//
+// Phase 4D, Slice 4B: the active link is now persistently retrievable,
+// not just shown once at creation time -- getActivePortalLink() (same
+// file as the other actions) does the actual retrieval, staff-session-
+// gated and re-run on every click, never cached here or anywhere
+// client-side. The masked row below is shown whenever a link is active
+// (initialStatus.enabled); clicking "Copy Active Link" is what reveals
+// and copies the real value -- the masked placeholder itself is a fixed
+// string, never derived from the real link or its length. If the active
+// link predates encrypted-copy support (initialStatus.canRetrieve is
+// false), the button stays disabled with an explanatory tooltip instead
+// of ever attempting a retrieval that can only fail.
 
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString("en-US", {
@@ -77,8 +90,15 @@ export default function PortalLinkSection({
   const [rawLink, setRawLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"regenerate" | "disable" | null>(null);
+  // Distinguishes "just generated/regenerated -- this is the one-time
+  // display" from "retrieved on demand via Copy Active Link" purely for
+  // the messaging shown alongside rawLink below -- both reuse the same
+  // rawLink/copied state since they're mutually exclusive in time (only
+  // one reveal is ever shown at once) and neither is ever persisted
+  // beyond this component's state.
+  const [justGenerated, setJustGenerated] = useState(false);
 
-  const { enabled, createdAt, lastAccessedAt, accessCount } = initialStatus;
+  const { enabled, createdAt, lastAccessedAt, accessCount, canRetrieve } = initialStatus;
 
   // Mirrors the two banners above into a single tooltip string -- never
   // names the configured pilot store, only states that this one isn't
@@ -89,6 +109,10 @@ export default function PortalLinkSection({
     ? "Disabled -- this store is not part of the current pilot."
     : undefined;
 
+  const retrieveDisabledTitle = !canRetrieve
+    ? "This link was created before persistent retrieval was enabled -- regenerate it to enable copying it again."
+    : undefined;
+
   function handleResult(result: PortalLinkActionState) {
     if (result.error) {
       setError(result.error);
@@ -96,6 +120,7 @@ export default function PortalLinkSection({
     }
     setError(null);
     if (result.url) {
+      setJustGenerated(true);
       setRawLink(result.url);
       setCopied(false);
     }
@@ -115,6 +140,35 @@ export default function PortalLinkSection({
     startTransition(async () => {
       const result = await regeneratePortalLink(storeId);
       handleResult(result);
+    });
+  }
+
+  // Retrieves and copies the current active link on demand -- a fresh
+  // server round-trip every time (requireStaffSession() + decrypt
+  // inside getActivePortalLink()), never a cached or client-stored
+  // value, so this works identically after a refresh, a logout/login,
+  // or from a different staff session entirely.
+  function runRetrieve() {
+    setError(null);
+    setJustGenerated(false);
+    startTransition(async () => {
+      const result = await getActivePortalLink(storeId);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      if (!result.url) return;
+
+      setRawLink(result.url);
+      setCopied(false);
+      try {
+        await navigator.clipboard.writeText(result.url);
+        setCopied(true);
+      } catch {
+        // Clipboard write can fail (permissions, insecure context,
+        // etc.) -- the link is still revealed below for manual
+        // select-and-copy, same fallback as handleCopy().
+      }
     });
   }
 
@@ -197,14 +251,45 @@ export default function PortalLinkSection({
         </dl>
       )}
 
+      {enabled && !rawLink && (
+        <div className="mt-4">
+          <p className="mb-1 text-xs text-slate-500">Active link</p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              type="text"
+              readOnly
+              // A fixed-width placeholder, never derived from the real
+              // link or its length -- masked by default, per the
+              // retrieval design, until Copy Active Link is clicked.
+              value="•••••••••••••••••••••••••••••••••••••••••••"
+              aria-label="Active portal link (hidden)"
+              className="min-w-0 flex-1 truncate rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-400"
+            />
+            <button
+              type="button"
+              onClick={runRetrieve}
+              disabled={isPending || !canRetrieve}
+              title={retrieveDisabledTitle}
+              className="flex-shrink-0 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Copy Active Link
+            </button>
+          </div>
+          {!canRetrieve && (
+            <p className="mt-1 text-xs text-slate-500">{retrieveDisabledTitle}</p>
+          )}
+        </div>
+      )}
+
       {rawLink && (
         <div className="mt-4 rounded-lg border border-[#860132]/30 bg-[#860132]/5 p-4">
           <p className="text-sm font-medium text-slate-900">
-            Copy this link now -- it won&apos;t be shown again.
+            {justGenerated ? "Copy this link now." : "This is the current active link."}
           </p>
           <p className="mt-1 text-xs text-slate-600">
-            This is the only time the full link is displayed. If it&apos;s lost, you&apos;ll
-            need to regenerate a new one, which invalidates this one.
+            {justGenerated
+              ? "You can retrieve and copy this same link again at any time using Copy Active Link, below -- it isn't shown here only once."
+              : "You can retrieve this same link again at any time by clicking Copy Active Link."}
           </p>
 
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -229,7 +314,7 @@ export default function PortalLinkSection({
             onClick={() => setRawLink(null)}
             className="mt-2 text-xs text-slate-500 underline hover:text-slate-700"
           >
-            I&apos;ve copied it -- dismiss
+            Hide
           </button>
         </div>
       )}

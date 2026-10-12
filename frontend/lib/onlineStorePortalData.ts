@@ -16,6 +16,17 @@ import { requireStaffSession } from "@/lib/auth";
 // selected, so there is no path through this module that could ever
 // return a token hash (raw or hashed) to a caller, by construction, not
 // by after-the-fact filtering.
+//
+// Phase 4D, Slice 4B: encrypted_token IS selected here (unlike
+// token_hash), because this is the one place that needs to know
+// whether a retrievable copy exists at all -- but its value is read
+// only to compute the canRetrieve boolean below and is never included
+// in PortalLinkStatus or returned to a caller. Retrieving and
+// decrypting the actual value happens exclusively in
+// getActivePortalLink() (app/(internal)/stores/[storeId]/actions.ts),
+// a separate, explicitly-invoked Server Action -- this function never
+// decrypts anything, so a staff member merely loading the Overview
+// page never triggers a decryption attempt.
 
 export type PortalLinkStatus = {
   enabled: boolean;
@@ -23,6 +34,7 @@ export type PortalLinkStatus = {
   expiresAt: string | null;
   lastAccessedAt: string | null;
   accessCount: number;
+  canRetrieve: boolean;
 };
 
 const EMPTY_STATUS: PortalLinkStatus = {
@@ -31,6 +43,7 @@ const EMPTY_STATUS: PortalLinkStatus = {
   expiresAt: null,
   lastAccessedAt: null,
   accessCount: 0,
+  canRetrieve: false,
 };
 
 export async function getPortalLinkStatus(storeId: number): Promise<PortalLinkStatus> {
@@ -46,7 +59,7 @@ export async function getPortalLinkStatus(storeId: number): Promise<PortalLinkSt
 
   const { data, error } = await supabaseAdmin
     .from("online_store_portal_tokens")
-    .select("created_at, expires_at, last_accessed_at, access_count")
+    .select("created_at, expires_at, last_accessed_at, access_count, encrypted_token")
     .eq("online_store_id", storeId)
     .eq("active", true)
     .maybeSingle();
@@ -65,5 +78,6 @@ export async function getPortalLinkStatus(storeId: number): Promise<PortalLinkSt
     expiresAt: data.expires_at,
     lastAccessedAt: data.last_accessed_at,
     accessCount: data.access_count,
+    canRetrieve: data.encrypted_token !== null,
   };
 }

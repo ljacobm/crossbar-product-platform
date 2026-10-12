@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireStaffSession } from "@/lib/auth";
-import { generateRawPortalToken, hashPortalToken } from "@/lib/portalTokens";
+import {
+  generateRawPortalToken,
+  hashPortalToken,
+  loadPortalEncryptionKey,
+  encryptPortalToken,
+  decryptPortalToken,
+} from "@/lib/portalTokens";
 import { isPortalGenerationEnabled, isStoreAllowedForPilot } from "@/lib/portalFeatureFlag";
 
 // Phase 4D, Slice 1/2: Customer Fundraising Portal -- staff-only token
@@ -77,10 +83,38 @@ async function rotateToken(storeId: number): Promise<PortalLinkActionState> {
   const rawToken = generateRawPortalToken();
   const tokenHash = hashPortalToken(rawToken);
 
+  // Phase 4D, Slice 4B (correction): a valid PORTAL_TOKEN_ENCRYPTION_KEY
+  // is now REQUIRED to create or rotate a link -- encryption is checked,
+  // and must succeed, before rotate_online_store_portal_token is called
+  // at all. This is deliberately placed before the RPC call (which is
+  // what atomically deactivates the old token and inserts the new one):
+  // failing here means neither side effect has happened yet, so a
+  // missing/invalid key or an encryption failure can never deactivate an
+  // existing working link, and can never create a new token that would
+  // be permanently unrecoverable (no encrypted copy, no way to add one
+  // later without rotating again). The error returned to staff is
+  // generic -- it never distinguishes "key unset" from "key malformed"
+  // from "encryption threw" -- those are all operational/configuration
+  // detail, not something to surface outside logs.
+  //
+  // This does NOT affect existing customer token validation:
+  // resolvePortalStoreId() (lib/portalAccess.ts) authenticates purely by
+  // token_hash and never reads or depends on
+  // PORTAL_TOKEN_ENCRYPTION_KEY -- a previously issued link keeps working
+  // for customers regardless of this key's state.
+  let encryptedToken: string;
+  try {
+    const key = loadPortalEncryptionKey(process.env);
+    encryptedToken = encryptPortalToken(rawToken, key);
+  } catch {
+    return { error: "Portal link generation is not available right now. Please try again later." };
+  }
+
   const { error } = await supabaseAdmin.rpc("rotate_online_store_portal_token", {
     p_online_store_id: storeId,
     p_token_hash: tokenHash,
     p_expires_at: null,
+    p_encrypted_token: encryptedToken,
   });
 
   if (error) {
@@ -140,9 +174,13 @@ export async function revokePortalLink(storeId: number): Promise<PortalLinkActio
     return { error: "Store not found." };
   }
 
+  // Phase 4D, Slice 4B: clearing encrypted_token in the same update as
+  // active = false means a disabled link's persistent, staff-retrievable
+  // copy is gone the instant it's disabled -- not just unusable by a
+  // customer (which active = false alone already guaranteed).
   const { error } = await supabaseAdmin
     .from("online_store_portal_tokens")
-    .update({ active: false })
+    .update({ active: false, encrypted_token: null })
     .eq("online_store_id", storeId)
     .eq("active", true);
 
@@ -152,4 +190,75 @@ export async function revokePortalLink(storeId: number): Promise<PortalLinkActio
 
   revalidatePath(`/stores/${storeId}/overview`);
   return { error: null };
+}
+
+// Phase 4D, Slice 4B: staff-only retrieval of the current active link's
+// full URL, for the "Copy Active Link" control -- an explicit,
+// on-demand Server Action, never embedded in the Overview page's
+// initial server-rendered props. requireStaffSession() runs first, same
+// as every other action in this file; there is no separate per-store
+// staff permission model anywhere in this app (see lib/auth.ts --
+// requireStaffSession() checks staff_allowlist membership only), so
+// store authorization here is the same isValidStoreId()
+// store-existence check used throughout, not a new, narrower check.
+//
+// Phase 4D, Slice 4B (correction): also gated by isStoreAllowedForPilot()
+// -- while the pilot restriction is active, a non-pilot store's staff
+// must not be able to retrieve its encrypted link either, even though
+// the link already exists and was already created under that same
+// gate. This mirrors the Slice 4A requirement that the customer-facing
+// data path re-checks pilot eligibility on every request rather than
+// "grandfathering" a link that was valid before the restriction existed
+// or changed -- staff retrieval gets the identical treatment, using the
+// exact same predicate (isStoreAllowedForPilot already incorporates the
+// global isPortalGenerationEnabled() check too), so the two surfaces
+// can never drift apart.
+export async function getActivePortalLink(
+  storeId: number
+): Promise<{ url: string | null; error: string | null }> {
+  await requireStaffSession();
+
+  if (!isValidStoreId(storeId)) {
+    return { url: null, error: "Invalid store." };
+  }
+
+  if (!isStoreAllowedForPilot(storeId)) {
+    return { url: null, error: "This store is not part of the current customer portal pilot." };
+  }
+
+  const nowIso = new Date().toISOString();
+
+  // Same active/expiry filter as portalAccess.ts's resolvePortalStoreId
+  // -- an inactive or expired row must never be presented as retrievable
+  // here either.
+  const { data, error } = await supabaseAdmin
+    .from("online_store_portal_tokens")
+    .select("encrypted_token")
+    .eq("online_store_id", storeId)
+    .eq("active", true)
+    .or(`expires_at.is.null,expires_at.gt.${nowIso}`)
+    .maybeSingle();
+
+  if (error) {
+    return { url: null, error: "Failed to retrieve link. Please try again." };
+  }
+
+  if (!data || !data.encrypted_token) {
+    return {
+      url: null,
+      error:
+        "This link isn't available for retrieval -- regenerate it to enable copying it again.",
+    };
+  }
+
+  try {
+    const key = loadPortalEncryptionKey(process.env);
+    const rawToken = decryptPortalToken(data.encrypted_token, key);
+    return { url: buildPortalUrl(rawToken), error: null };
+  } catch {
+    // Never surfaces why -- wrong/missing key, corrupted value, or a
+    // failed auth-tag check all look the same to the caller: retrieval
+    // simply isn't available right now.
+    return { url: null, error: "Failed to retrieve link. Please try again." };
+  }
 }

@@ -390,6 +390,261 @@ run("existing staff Sales page file is untouched by this slice", () => {
   assert.ok(source.includes("requireStaffSession") === false); // page itself never calls it directly -- unchanged from before
 });
 
+run("getActivePortalLink checks staff auth, then the pilot allowlist, then active status and expiry, in that order", () => {
+  const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/actions.ts"));
+  const fnMatch = source.match(
+    /export async function getActivePortalLink\([\s\S]*?\n\}/
+  );
+  assert.ok(fnMatch, "expected to find getActivePortalLink's full body");
+  const body = fnMatch![0];
+
+  const sessionIndex = body.indexOf("requireStaffSession()");
+  const pilotCheckIndex = body.indexOf("isStoreAllowedForPilot(storeId)");
+  const queryIndex = body.indexOf('.from("online_store_portal_tokens")');
+  assert.ok(sessionIndex !== -1 && pilotCheckIndex !== -1 && queryIndex !== -1);
+  assert.ok(sessionIndex < pilotCheckIndex, "requireStaffSession() must run before the pilot check");
+  assert.ok(pilotCheckIndex < queryIndex, "the pilot check must run before the token lookup");
+
+  assert.ok(body.includes('.eq("active", true)'));
+  assert.ok(body.includes("expires_at.is.null"));
+  assert.ok(body.includes("expires_at.gt."));
+});
+
+run("getActivePortalLink rejects a non-pilot store, independent of whether an active token exists for it", () => {
+  const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/actions.ts"));
+  const fnMatch = source.match(
+    /export async function getActivePortalLink\([\s\S]*?\n\}/
+  );
+  assert.ok(fnMatch);
+  const body = fnMatch![0];
+  // The pilot check must be a real, early return -- not merely
+  // referenced somewhere in the function -- so a non-pilot store's
+  // request never reaches the token query at all.
+  assert.ok(
+    /if\s*\(!isStoreAllowedForPilot\(storeId\)\)\s*\{\s*return/.test(body),
+    "expected an early return guarded by !isStoreAllowedForPilot(storeId)"
+  );
+});
+
+run("getActivePortalLink never returns the encryption key or a decryption failure's internal detail", () => {
+  const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/actions.ts"));
+  const fnMatch = source.match(
+    /export async function getActivePortalLink\([\s\S]*?\n\}/
+  );
+  assert.ok(fnMatch);
+  const body = fnMatch![0];
+  assert.equal(/console\.\w+\(/.test(body), false, "must never log anything");
+  // The catch block around decryption must return a fixed, generic
+  // error string, never the caught error itself or any of its
+  // properties.
+  assert.equal(/catch\s*\([^)]*\)\s*\{[^}]*\berr\b/.test(body), false);
+});
+
+run("revokePortalLink clears encrypted_token in the same update as active = false", () => {
+  const source = stripLineComments(
+    readSource("app/(internal)/stores/[storeId]/actions.ts")
+  );
+  const fnMatch = source.match(
+    /export async function revokePortalLink\([\s\S]*?\n\}/
+  );
+  assert.ok(fnMatch, "expected to find revokePortalLink's full body");
+  const body = fnMatch![0];
+  const updateCallMatch = body.match(/\.update\(\{([\s\S]*?)\}\)/);
+  assert.ok(updateCallMatch, "expected a single .update({...}) call");
+  assert.ok(/active:\s*false/.test(updateCallMatch![1]));
+  assert.ok(/encrypted_token:\s*null/.test(updateCallMatch![1]));
+});
+
+run("rotateToken requires successful encryption before ever calling the rotation RPC (correction: no longer best-effort)", () => {
+  const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/actions.ts"));
+  const fnMatch = source.match(/async function rotateToken\([\s\S]*?\n\}/);
+  assert.ok(fnMatch, "expected to find rotateToken's full body");
+  const body = fnMatch![0];
+
+  assert.ok(body.includes("p_encrypted_token: encryptedToken"));
+
+  const tryMatch = body.match(/try\s*\{([\s\S]*?)\}\s*catch[\s\S]*?\{([\s\S]*?)\}/);
+  assert.ok(tryMatch, "expected a try/catch around the encryption call");
+  assert.ok(tryMatch![1].includes("encryptPortalToken"));
+
+  // The catch block must now return early with a generic error --
+  // encryptedToken must never be set to null and allowed to fall
+  // through to the RPC call the way the earlier (best-effort) design
+  // did.
+  assert.ok(/return\s*\{\s*error:/.test(tryMatch![2]), "catch block must return an error, not fall through");
+  assert.equal(/encryptedToken\s*=\s*null/.test(tryMatch![2]), false);
+
+  // The RPC call (which atomically deactivates the old token and
+  // inserts the new one) must be textually AFTER the try/catch, so a
+  // thrown/caught encryption failure's early return genuinely prevents
+  // it from ever running -- neither deactivating an existing token nor
+  // creating an unrecoverable new one.
+  const tryCatchEndIndex = body.indexOf(tryMatch![0]) + tryMatch![0].length;
+  const rpcCallIndex = body.indexOf('supabaseAdmin.rpc("rotate_online_store_portal_token"');
+  assert.ok(rpcCallIndex !== -1 && rpcCallIndex > tryCatchEndIndex);
+});
+
+run("rotateToken's encryptedToken is always a real value by the time the RPC runs, never null", () => {
+  const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/actions.ts"));
+  const fnMatch = source.match(/async function rotateToken\([\s\S]*?\n\}/);
+  assert.ok(fnMatch);
+  const body = fnMatch![0];
+  // The declared type excludes null -- a TypeScript-level guarantee
+  // that every code path reaching the RPC call assigned a real string.
+  assert.ok(/let encryptedToken:\s*string;/.test(body));
+});
+
+run("the portal token encryption key is never NEXT_PUBLIC_-prefixed and never logged anywhere in this module", () => {
+  const source = stripLineComments(readSource("lib/portalTokenCrypto.ts"));
+  assert.equal(source.includes("NEXT_PUBLIC_PORTAL_TOKEN_ENCRYPTION_KEY"), false);
+  assert.equal(/console\.\w+\(/.test(source), false);
+});
+
+run("getPortalLinkStatus never returns the raw encrypted_token value itself, only a derived boolean", () => {
+  const source = stripLineComments(readSource("lib/onlineStorePortalData.ts"));
+  const returnMatch = source.match(/return \{([\s\S]*?)\};/);
+  assert.ok(returnMatch, "expected to find getPortalLinkStatus's return object");
+  const body = returnMatch![1];
+
+  // encrypted_token is allowed to appear here only as the right-hand
+  // side of a !== null comparison assigned to canRetrieve -- it must
+  // never be forwarded as a value (bare or under any key) in its own
+  // right.
+  assert.ok(/canRetrieve:\s*data\.encrypted_token\s*!==\s*null/.test(body));
+  assert.equal(/encrypted_token\s*,/.test(body), false, "must not be returned as a bare value");
+  assert.equal(/encryptedToken\s*:/.test(body), false, "must not be returned under any key");
+
+  // PortalLinkStatus's own type declaration must likewise expose only
+  // the boolean, never a raw token/ciphertext field.
+  const typeMatch = source.match(/export type PortalLinkStatus = \{([\s\S]*?)\};/);
+  assert.ok(typeMatch, "expected to find the PortalLinkStatus type");
+  assert.equal(/token/i.test(typeMatch![1]), false);
+});
+
+run("PortalLinkSection's masked placeholder is a fixed string -- the component never references encrypted_token or the encryption key", () => {
+  const source = stripLineComments(readSource("components/PortalLinkSection.tsx"));
+  assert.equal(source.includes("encrypted_token"), false);
+  assert.equal(source.includes("PORTAL_TOKEN_ENCRYPTION_KEY"), false);
+  // The masked row's input must be a literal string value, not an
+  // expression reading from initialStatus/rawLink/storeId.
+  assert.ok(source.includes('value="•••'));
+});
+
+run("the encrypted-copy migration is wrapped in BEGIN/COMMIT and drops the old 3-argument signature before creating the 4-argument replacement", () => {
+  const rawSource = readSource(
+    "../database/migrations/20261013_add_portal_token_encrypted_copy.sql"
+  );
+  const source = stripSqlComments(rawSource);
+
+  // The entire migration -- column addition, drop, create, and the
+  // grant/revoke pair -- must run as one atomic transaction.
+  const beginIndex = source.search(/^\s*begin\s*;/im);
+  const commitIndex = source.search(/^\s*commit\s*;/im);
+  assert.ok(beginIndex !== -1 && commitIndex !== -1, "expected BEGIN; ... COMMIT;");
+  const alterIndex = source.indexOf("alter table public.online_store_portal_tokens");
+  assert.ok(alterIndex !== -1 && beginIndex < alterIndex && alterIndex < commitIndex);
+
+  // The whole point of the correction: without this explicit drop,
+  // CREATE OR REPLACE with a different parameter-type list creates a
+  // second, ambiguous overload rather than replacing the function in
+  // place.
+  const dropIndex = source.indexOf(
+    "drop function if exists public.rotate_online_store_portal_token(bigint, text, timestamptz)"
+  );
+  const createIndex = source.indexOf(
+    "create or replace function public.rotate_online_store_portal_token"
+  );
+  assert.ok(dropIndex !== -1, "expected the old 3-argument signature to be explicitly dropped");
+  assert.ok(createIndex !== -1 && dropIndex < createIndex, "the drop must run before the create");
+  assert.ok(beginIndex < dropIndex && createIndex < commitIndex, "drop/create must be inside the transaction");
+
+  // Exactly one CREATE for this function name (the 4-argument version)
+  // -- not two separate CREATE statements that would themselves define
+  // two overloads.
+  const createMatches = source.match(
+    /create or replace function public\.rotate_online_store_portal_token/g
+  );
+  assert.equal(createMatches?.length, 1);
+
+  // p_encrypted_token has no default -- only p_expires_at (the trailing
+  // parameter) does, which is also why p_encrypted_token is declared
+  // before it: Postgres requires every defaulted parameter to come
+  // after every non-defaulted one.
+  const signatureMatch = source.match(
+    /create or replace function public\.rotate_online_store_portal_token\(([\s\S]*?)\)\s*\n?returns/
+  );
+  assert.ok(signatureMatch, "expected to find the function's parameter list");
+  assert.equal(/p_encrypted_token\s+text\s+default/i.test(signatureMatch![1]), false);
+  assert.ok(/p_expires_at\s+timestamptz\s+default\s+null/i.test(signatureMatch![1]));
+
+  assert.ok(source.includes("security invoker"));
+  assert.ok(source.includes("set search_path = ''"));
+  assert.ok(source.includes("for update"), "expected the row lock that makes rotation atomic");
+
+  // Grant/revoke stated against the new 4-argument signature only, and
+  // only to service_role -- no new anonymous or authenticated
+  // permission anywhere in this file.
+  const grantRevokeSignature = "(bigint, text, text, timestamptz)";
+  assert.ok(
+    source.includes(
+      `revoke all on function public.rotate_online_store_portal_token${grantRevokeSignature} from public, anon, authenticated`
+    )
+  );
+  assert.ok(
+    source.includes(
+      `grant execute on function public.rotate_online_store_portal_token${grantRevokeSignature} to service_role`
+    )
+  );
+  assert.equal(
+    /\bgrant\s+(?:select|insert|update|delete|all)\s+on\s+(?:table\s+)?public\.\w+\s+to\s+(?:anon|authenticated|public)/i.test(
+      source
+    ),
+    false
+  );
+  // No new table, no new RLS policy anywhere in this migration.
+  assert.equal(/\bcreate\s+table\b/i.test(source), false);
+  assert.equal(source.includes("create policy"), false);
+
+  // The deactivation UPDATE inside the function body clears
+  // encrypted_token alongside active = false.
+  const bodyMatch = source.match(/as \$\$([\s\S]*?)\$\$;/);
+  assert.ok(bodyMatch, "expected to find the function body between as $$ ... $$;");
+  const updateMatch = bodyMatch![1].match(/update[\s\S]*?set([\s\S]*?)where/i);
+  assert.ok(updateMatch, "expected an UPDATE ... SET ... WHERE in the function body");
+  assert.ok(/active\s*=\s*false/.test(updateMatch![1]));
+  assert.ok(/encrypted_token\s*=\s*null/.test(updateMatch![1]));
+
+  // No dynamic SQL.
+  assert.equal(/\bexecute\s+format\(|\bformat\(/i.test(source), false);
+});
+
+run("the migration's rotation function rejects a null/empty p_encrypted_token before locking or deactivating anything", () => {
+  const rawSource = readSource(
+    "../database/migrations/20261013_add_portal_token_encrypted_copy.sql"
+  );
+  const source = stripSqlComments(rawSource);
+  const bodyMatch = source.match(/as \$\$([\s\S]*?)\$\$;/);
+  assert.ok(bodyMatch, "expected to find the function body between as $$ ... $$;");
+  const body = bodyMatch![1];
+
+  const validationIndex = body.search(
+    /if\s+p_encrypted_token\s+is\s+null\s+or\s+length\(p_encrypted_token\)\s*=\s*0\s+then\s+raise\s+exception/i
+  );
+  assert.ok(validationIndex !== -1, "expected an explicit null/empty rejection with RAISE EXCEPTION");
+
+  const lockIndex = body.indexOf("for update");
+  const updateIndex = body.search(/update\s+public\.online_store_portal_tokens/i);
+  assert.ok(lockIndex !== -1 && updateIndex !== -1);
+  assert.ok(
+    validationIndex < lockIndex,
+    "p_encrypted_token must be validated before the store row is even locked"
+  );
+  assert.ok(
+    validationIndex < updateIndex,
+    "p_encrypted_token must be validated before the existing token is deactivated"
+  );
+});
+
 if (process.exitCode === 1) {
   console.error("\nOne or more checks failed.");
 } else {
