@@ -82,6 +82,16 @@ export interface GraphQLOrderNode {
   createdAt?: string | null;
   updatedAt?: string | null;
   cancelledAt?: string | null;
+  // Phase 1, Milestone 2: GraphQL's OrderCancelReason enum, confirmed
+  // against current Shopify docs to have six uppercase values (CUSTOMER,
+  // DECLINED, FRAUD, INVENTORY, OTHER, STAFF) -- passed through as-is
+  // (lowercased) by normalizeGraphQLOrder below; not independently
+  // confirmed that every one of REST's five values maps 1:1, verify
+  // before relying on this for filtering. Fulfillment/refund/discount
+  // GraphQL field extraction for the historical backfill is explicitly
+  // deferred to a later milestone (the enrichment pass) -- this query
+  // and normalizer are otherwise unchanged.
+  cancelReason?: string | null;
   displayFinancialStatus?: string | null;
   displayFulfillmentStatus?: string | null;
   currencyCode?: string | null;
@@ -317,6 +327,11 @@ export async function normalizeGraphQLOrder(node: GraphQLOrderNode): Promise<Nor
     createdAt: node.createdAt ?? null,
     updatedAt: node.updatedAt ?? null,
     cancelledAt: node.cancelledAt ?? null,
+    cancelReason: node.cancelReason?.toLowerCase() ?? null,
+    // financialStatusRaw/discounts deliberately left unset here --
+    // GraphQL's displayFinancialStatus casing fix and fulfillment/
+    // refund/discount field extraction for the backfill/enrichment path
+    // are out of scope for this milestone (see file header).
     rawData: node,
     lineItems: lineItemNodes.map(normalizeGraphQLLineItem),
   };
@@ -332,6 +347,7 @@ const ORDERS_PAGE_QUERY = `
         createdAt
         updatedAt
         cancelledAt
+        cancelReason
         displayFinancialStatus
         displayFulfillmentStatus
         currencyCode

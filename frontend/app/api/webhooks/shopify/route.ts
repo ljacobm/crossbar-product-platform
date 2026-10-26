@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { verifyShopifyHmac } from "@/lib/shopifyHmac";
 import { processShopifyOrder, type ShopifyOrderPayload } from "./ingest";
+import {
+  processShopifyOrderLifecycleUpdate,
+  processShopifyFulfillment,
+  processShopifyRefund,
+  type ShopifyFulfillmentPayload,
+  type ShopifyRefundPayload,
+} from "./ingestLifecycle";
+import { isShopifyLifecycleTopicEnabled } from "@/lib/shopifyLifecycleFlags";
+
+// Phase 1, Milestone 2: the new lifecycle topics, grouped by which
+// ingest handler/payload shape they share. orders/create is
+// deliberately NOT in any of these sets -- it is the existing,
+// always-on path (never gated by SHOPIFY_LIFECYCLE_TOPICS_ENABLED), so
+// the live production webhook keeps working unchanged regardless of
+// this flag's state.
+const LIFECYCLE_ORDER_TOPICS = new Set(["orders/updated", "orders/cancelled", "orders/edited"]);
+const LIFECYCLE_FULFILLMENT_TOPICS = new Set(["fulfillments/create", "fulfillments/update"]);
+const LIFECYCLE_REFUND_TOPICS = new Set(["refunds/create"]);
 
 // Postgres unique_violation error code, returned by PostgREST when the
 // shopify_webhook_id unique constraint is hit.
@@ -46,7 +64,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required webhook metadata." }, { status: 400 });
   }
 
-  let payload: ShopifyOrderPayload;
+  // The exact shape depends on `topic`, which TypeScript can't narrow
+  // from a runtime header value -- each dispatch branch below casts to
+  // the specific payload type its handler expects.
+  let payload: ShopifyOrderPayload | ShopifyFulfillmentPayload | ShopifyRefundPayload;
   try {
     payload = JSON.parse(rawBody);
   } catch {
@@ -117,10 +138,22 @@ export async function POST(request: NextRequest) {
     eventRowId = inserted.id;
   }
 
-  // Only order-related topics are normalized. Anything else is still
-  // recorded above but otherwise a no-op -- keeps the endpoint extensible to
-  // future topics without building topic-specific handling now.
-  if (!topic.startsWith("orders/")) {
+  // Dispatch. orders/create is always processed (the existing,
+  // unconditional path -- see ingest.ts). The new lifecycle topics
+  // (orders/updated|cancelled|edited, fulfillments/create|update,
+  // refunds/create) are processed only when explicitly enabled via
+  // SHOPIFY_LIFECYCLE_TOPICS_ENABLED; everything else, including a
+  // recognized-but-not-yet-enabled lifecycle topic, is recorded above
+  // but otherwise a no-op -- identical treatment to an unrecognized
+  // topic, so enabling a new topic can never partially apply anything.
+  const isLifecycleTopic =
+    LIFECYCLE_ORDER_TOPICS.has(topic) ||
+    LIFECYCLE_FULFILLMENT_TOPICS.has(topic) ||
+    LIFECYCLE_REFUND_TOPICS.has(topic);
+  const shouldProcess =
+    topic === "orders/create" || (isLifecycleTopic && isShopifyLifecycleTopicEnabled(topic));
+
+  if (!shouldProcess) {
     const { error: ignoredUpdateError } = await supabaseAdmin
       .from("shopify_webhook_events")
       .update({ status: "processed", processed_at: new Date().toISOString(), error_message: null })
@@ -134,11 +167,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to update webhook event." }, { status: 500 });
     }
 
-    return NextResponse.json({ status: "ignored", topic }, { status: 200 });
+    return NextResponse.json(
+      { status: isLifecycleTopic ? "disabled" : "ignored", topic },
+      { status: 200 }
+    );
   }
 
   try {
-    const { orderId } = await processShopifyOrder(payload);
+    let orderId: number;
+    if (topic === "orders/create") {
+      ({ orderId } = await processShopifyOrder(payload as ShopifyOrderPayload));
+    } else if (LIFECYCLE_ORDER_TOPICS.has(topic)) {
+      ({ orderId } = await processShopifyOrderLifecycleUpdate(
+        topic as "orders/updated" | "orders/cancelled" | "orders/edited",
+        payload as ShopifyOrderPayload
+      ));
+    } else if (LIFECYCLE_FULFILLMENT_TOPICS.has(topic)) {
+      ({ orderId } = await processShopifyFulfillment(payload as ShopifyFulfillmentPayload));
+    } else {
+      ({ orderId } = await processShopifyRefund(payload as ShopifyRefundPayload));
+    }
 
     const { error: processedUpdateError } = await supabaseAdmin
       .from("shopify_webhook_events")
