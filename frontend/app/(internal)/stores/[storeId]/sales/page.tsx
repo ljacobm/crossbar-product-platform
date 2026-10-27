@@ -85,7 +85,7 @@ export default async function StoreSalesDataPage({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold text-slate-900">Detailed Sales</h2>
-        <SalesLineItemsTable lineItems={salesData.lineItems} />
+        <SalesLineItemsTable lineItems={salesData.lineItems} showDiscounts />
       </div>
 
       <PayoutsSection storeId={store.id} payouts={payouts} />

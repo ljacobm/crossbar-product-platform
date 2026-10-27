@@ -1,4 +1,5 @@
 import { formatMoney } from "@/lib/formatMoney";
+import { resolveDiscountDisplayState } from "@/lib/discountDisplayState";
 import type { SalesLineItemRow } from "@/lib/onlineStoreSalesTypes";
 
 function formatDate(value: string | null): string {
@@ -10,7 +11,52 @@ function formatDate(value: string | null): string {
   });
 }
 
-export default function SalesLineItemsTable({ lineItems }: { lineItems: SalesLineItemRow[] }) {
+// Renders this order's discount state for the Discount column. The
+// actual decision logic (which of the four states applies) lives in
+// lib/discountDisplayState.ts, as a plain, directly-testable function --
+// this is purely the JSX for each resolved state. ORDER-level labeling
+// throughout -- never implies a per-line-item amount, per the "clearly
+// label amounts as order-level discounts" requirement.
+function renderDiscountCell(row: SalesLineItemRow) {
+  const state = resolveDiscountDisplayState(row);
+
+  switch (state.kind) {
+    case "codes":
+      return (
+        <div className="space-y-0.5">
+          {state.codes.map((discount, index) => (
+            <div key={index} className="font-mono text-xs text-slate-700">
+              {discount.applicationType === "automatic"
+                ? "Automatic discount"
+                : discount.code || "Discount code"}
+            </div>
+          ))}
+          <div className="text-xs text-slate-500">
+            Order discount: {state.total != null ? formatMoney(state.total) : "amount unavailable"}
+          </div>
+        </div>
+      );
+    case "no-discount":
+      return <span className="text-xs text-slate-400">No discount</span>;
+    case "code-unavailable":
+      return (
+        <div className="text-xs text-slate-700">
+          Order discount: {formatMoney(state.total)}
+          <div className="text-slate-400">Code unavailable</div>
+        </div>
+      );
+    case "unavailable":
+      return <span className="text-xs text-slate-400">Discount data unavailable</span>;
+  }
+}
+
+export default function SalesLineItemsTable({
+  lineItems,
+  showDiscounts = false,
+}: {
+  lineItems: SalesLineItemRow[];
+  showDiscounts?: boolean;
+}) {
   if (lineItems.length === 0) {
     return (
       <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
@@ -31,6 +77,7 @@ export default function SalesLineItemsTable({ lineItems }: { lineItems: SalesLin
             <th className="px-4 py-3">Item Code</th>
             <th className="px-4 py-3">Item Price</th>
             <th className="px-4 py-3">Total Sale Price</th>
+            {showDiscounts && <th className="px-4 py-3">Discount</th>}
           </tr>
         </thead>
 
@@ -48,6 +95,7 @@ export default function SalesLineItemsTable({ lineItems }: { lineItems: SalesLin
               <td className="px-4 py-3 font-medium text-slate-900">
                 {formatMoney(row.totalSalePrice)}
               </td>
+              {showDiscounts && <td className="px-4 py-3">{renderDiscountCell(row)}</td>}
             </tr>
           ))}
         </tbody>

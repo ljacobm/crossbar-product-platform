@@ -4,6 +4,7 @@ import type {
   BestSellerRow,
   DateRange,
   Payout,
+  SalesLineItemDiscount,
   SalesLineItemRow,
   StoreSalesData,
 } from "@/lib/onlineStoreSalesTypes";
@@ -33,6 +34,17 @@ import type {
 // line-item-only totals (shopify_orders.total_price is never read),
 // and the "lifetime figures are never date-filtered" behavior for the
 // fundraiser balance are all preserved exactly.
+//
+// Staff-facing discount display (added on top of the above, unchanged
+// logic): shopify_orders.total_discounts and shopify_order_discounts are
+// read ONLY to attach order-level display fields onto each
+// SalesLineItemRow below (discountTotal/discountCodes) -- never inside
+// the totalSales/totalItems/bestSellerMap loop above, and never summed
+// across an order's multiple line-item rows. Both reads are optional
+// fields on SalesLineItemRow (see its own comment), so the customer
+// portal's separate CustomerLineItem type and toCustomerSalesData()
+// allowlist mapper (lib/customerPortalSalesData.ts) are structurally
+// untouched -- these new fields simply never reach that mapper.
 
 const BEST_SELLERS_LIMIT = 10;
 
@@ -44,10 +56,19 @@ type RawLineItemRow = {
   price: number | null;
   shopify_product_id: number | null;
   order: {
+    id: number;
     order_number: string | null;
     order_created_at: string | null;
     cancelled_at: string | null;
+    total_discounts: number | string | null;
   } | null;
+};
+
+type RawOrderDiscountRow = {
+  order_id: number;
+  application_index: number | null;
+  application_type: string | null;
+  code: string | null;
 };
 
 function toNumber(value: number | string | null): number {
@@ -84,7 +105,7 @@ export async function buildStoreSalesData(
     .select(
       `
       id, title, quantity, item_number, price, shopify_product_id,
-      order:shopify_orders!inner ( order_number, order_created_at, cancelled_at )
+      order:shopify_orders!inner ( id, order_number, order_created_at, cancelled_at, total_discounts )
       `
     )
     .eq("online_store_id", storeId)
@@ -126,6 +147,58 @@ export async function buildStoreSalesData(
     }
   }
 
+  // Discount display data: order-level only (shopify_orders.total_discounts,
+  // shopify_order_discounts), fetched for the distinct set of orders
+  // actually displayed (scopedRows) and attached per row below for
+  // DISPLAY ONLY -- never read by totalSales/totalItems/bestSellerMap
+  // above, and never summed across a single order's multiple line-item
+  // rows. See SalesLineItemRow's own comment in onlineStoreSalesTypes.ts.
+  //
+  // discountTotal comes from the main order query above (row.order.
+  // total_discounts) and is therefore completely unaffected by whether
+  // this secondary lookup succeeds -- it is set per row in the lineItems
+  // map below regardless of discountLookupSucceeded.
+  //
+  // This lookup is deliberately NOT allowed to throw: it is a display-only
+  // enhancement, not essential data, so a failure here must never prevent
+  // the rest of the Sales Data page (or the customer portal, which shares
+  // this function) from rendering. The error is logged for visibility,
+  // and discountLookupSucceeded tracks whether the lookup actually ran to
+  // completion -- when it didn't, every row's discountCodes is left
+  // `undefined` ("unknown"), never `[]` ("confirmed zero"), so a failed
+  // lookup can never be displayed as a confirmed absence of a discount.
+  // See SalesLineItemRow's own comment in onlineStoreSalesTypes.ts for the
+  // full three-state contract this preserves.
+  const scopedOrderIds = Array.from(
+    new Set(scopedRows.map((row) => row.order?.id).filter((id): id is number => id != null))
+  );
+
+  const discountsByOrderId = new Map<number, SalesLineItemDiscount[]>();
+  let discountLookupSucceeded = true;
+  if (scopedOrderIds.length > 0) {
+    try {
+      const { data: discountRows, error: discountError } = await supabaseAdmin
+        .from("shopify_order_discounts")
+        .select("order_id, application_index, application_type, code")
+        .in("order_id", scopedOrderIds)
+        .order("application_index", { ascending: true });
+
+      if (discountError) {
+        throw new Error(discountError.message);
+      }
+
+      for (const row of (discountRows as unknown as RawOrderDiscountRow[]) ?? []) {
+        const existing = discountsByOrderId.get(row.order_id) ?? [];
+        existing.push({ code: row.code, applicationType: row.application_type ?? "discount_code" });
+        discountsByOrderId.set(row.order_id, existing);
+      }
+    } catch (err) {
+      discountLookupSucceeded = false;
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error(`Failed to load order discounts for store ${storeId} (sales data still renders without discount detail): ${message}`);
+    }
+  }
+
   const lineItems: SalesLineItemRow[] = scopedRows
     .map((row) => ({
       lineItemId: row.id,
@@ -136,6 +209,12 @@ export async function buildStoreSalesData(
       itemNumber: row.item_number,
       price: row.price != null ? toNumber(row.price) : null,
       totalSalePrice: toNumber(row.price) * toNumber(row.quantity),
+      discountTotal: row.order?.total_discounts != null ? toNumber(row.order.total_discounts) : null,
+      discountCodes: discountLookupSucceeded
+        ? row.order?.id != null
+          ? discountsByOrderId.get(row.order.id) ?? []
+          : []
+        : undefined,
     }))
     .sort((a, b) => (b.orderDate ?? "").localeCompare(a.orderDate ?? ""));
 
