@@ -758,6 +758,42 @@ export async function syncShopifyFulfillmentViaRpc(
   return { fulfillmentId: row.id, applied: row.applied, orderId: row.order_id };
 }
 
+export interface SyncShopifyOrderDiscountsRpcResult {
+  applied: boolean;
+}
+
+// Phase 1, Milestone 3: writes JUST an order's discount set, independent
+// of the rest of an order touch -- backs the new, additive discount
+// capture call in ingest.ts's processShopifyOrder() (orders/create),
+// which deliberately does not route through the full sync_shopify_order
+// RPC (that would change orders/create's existing order/line-item
+// write path -- see database/migrations/
+// 20261029_extract_shopify_order_discounts_sync.sql for the extraction
+// rationale). sync_shopify_order() itself also calls the same SQL
+// function internally now, so orders/updated|cancelled|edited's
+// discount behavior is unchanged.
+export async function syncShopifyOrderDiscountsViaRpc(
+  client: SupabaseClient,
+  shopifyOrderId: number,
+  discounts: NormalizedShopifyOrderDiscount[] | null | undefined
+): Promise<SyncShopifyOrderDiscountsRpcResult> {
+  const { data, error } = await client.rpc("sync_shopify_order_discounts", {
+    p_shopify_order_id: shopifyOrderId,
+    p_discounts: buildDiscountsJson(discounts),
+  });
+
+  if (error) {
+    throw new Error(`sync_shopify_order_discounts RPC failed: ${error.message}`);
+  }
+
+  const row = firstRpcRow<{ applied: boolean }>(data);
+  if (!row) {
+    throw new Error("sync_shopify_order_discounts RPC returned no row");
+  }
+
+  return { applied: row.applied };
+}
+
 export interface SyncShopifyRefundRpcResult {
   refundId: number;
   applied: boolean;

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { isCompleteSnapshotForLifecycleOrderTopic } from "@/lib/shopifyLifecycleOrderTopics";
+import { normalizeRestOrder, type ShopifyOrderPayload } from "@/lib/shopifyRestAdapter";
+import { buildDiscountsJson } from "@/lib/shopifyNormalized";
 
 // Phase 1, Milestone 2: tests for the ingest-orchestration layer --
 // isCompleteSnapshotForLifecycleOrderTopic() is a pure function and is
@@ -177,6 +179,126 @@ run("syncShopifyOrderViaRpc passes p_is_complete_line_item_snapshot straight fro
   const fnMatch = source.match(/export async function syncShopifyOrderViaRpc\([\s\S]*?\n\}/);
   assert.ok(fnMatch, "expected to find syncShopifyOrderViaRpc's full body");
   assert.ok(fnMatch![0].includes("p_is_complete_line_item_snapshot: options.isCompleteLineItemSnapshot"));
+});
+
+// =============================================================================
+// Phase 1, Milestone 3: discount capture for orders/create.
+// =============================================================================
+
+// buildDiscountsJson's own missing-vs-empty-vs-populated behavior was
+// previously exported "specifically so it's unit-testable" (see its own
+// comment in lib/shopifyNormalized.ts) but had no direct test -- this
+// closes that gap.
+run("buildDiscountsJson: undefined and null both become SQL-null ('no opinion'); an array (even empty) passes through", () => {
+  assert.equal(buildDiscountsJson(undefined), null);
+  assert.equal(buildDiscountsJson(null), null);
+  assert.deepEqual(buildDiscountsJson([]), []);
+});
+
+// Real production order #15065: a $60.00 fixed-amount discount code,
+// capped by Shopify to $54.72 actually allocated against this specific
+// order (confirmed: shopify_orders.total_discounts for that order is
+// also 54.72). application.value/valueAmount is the discount's OWN
+// configured rule value; discount_allocations[].amount is what was
+// actually taken off THIS order -- these must never be conflated. This
+// test exercises the real adapter (normalizeRestOrder, not a
+// hand-simplified stand-in) end to end.
+run("real #15065 shape: the $60 configured value and the $54.72 actually-allocated amount are captured in separate fields, never confused", () => {
+  const payload: ShopifyOrderPayload = {
+    id: 15065,
+    discount_applications: [
+      {
+        type: "discount_code",
+        code: "8PW77TL",
+        value_type: "fixed_amount",
+        value: "60.0",
+        target_type: "line_item",
+        target_selection: "explicit",
+        allocation_method: "across",
+      },
+    ],
+    line_items: [
+      {
+        id: 1,
+        quantity: 1,
+        price: "54.72",
+        discount_allocations: [{ amount: "54.72", discount_application_index: 0 }],
+      },
+    ],
+  };
+
+  const normalized = normalizeRestOrder(payload);
+  const discounts = buildDiscountsJson(normalized.discounts);
+  assert.ok(discounts, "expected a populated discounts array");
+  assert.equal(discounts!.length, 1);
+
+  const [discount] = discounts!;
+  assert.equal(discount.applicationType, "discount_code");
+  assert.equal(discount.code, "8PW77TL");
+  assert.equal(discount.valueType, "fixed_amount");
+  // The discount's OWN configured value -- $60, not the actually-applied amount.
+  assert.equal(discount.valueAmount, 60);
+
+  const allocations = discount.allocations as { allocatedAmount: number | null }[];
+  const totalAllocated = allocations.reduce((sum, a) => sum + (a.allocatedAmount ?? 0), 0);
+  // What was ACTUALLY taken off this specific order -- $54.72, never $60.
+  assert.equal(totalAllocated, 54.72);
+  assert.notEqual(totalAllocated, discount.valueAmount);
+});
+
+// An order with no discount at all, then a later update that adds one,
+// then a further update that removes it again -- all three states must
+// be distinguishable via the same null/empty/populated JSON CONTRACT
+// already proven at the SQL level (tests 5/6 in
+// database/tests/shopify_order_lifecycle_sync_test.sql).
+run("no-discount order, then an update that adds a discount, then an update that removes it -- all three states distinguishable", () => {
+  const noDiscountPayload: ShopifyOrderPayload = { id: 1, discount_applications: [], line_items: [] };
+  const noDiscount = normalizeRestOrder(noDiscountPayload);
+  // Confirmed empty -- Shopify explicitly reported zero discounts.
+  assert.deepEqual(buildDiscountsJson(noDiscount.discounts), []);
+
+  const withDiscountPayload: ShopifyOrderPayload = {
+    id: 1,
+    discount_applications: [{ type: "manual", value_type: "percentage", value: "10.0" }],
+    line_items: [],
+  };
+  const withDiscount = normalizeRestOrder(withDiscountPayload);
+  const withDiscountJson = buildDiscountsJson(withDiscount.discounts);
+  assert.equal(withDiscountJson!.length, 1);
+  assert.equal(withDiscountJson![0].valuePercentage, 10);
+
+  const removedAgainPayload: ShopifyOrderPayload = { id: 1, discount_applications: [], line_items: [] };
+  const removedAgain = normalizeRestOrder(removedAgainPayload);
+  // Explicitly cleared -- distinct from "never looked" (undefined/null).
+  assert.deepEqual(buildDiscountsJson(removedAgain.discounts), []);
+
+  // A payload that omits discount_applications entirely (vs. reporting
+  // it as []) is "no opinion" -- must never be confused with "confirmed
+  // empty."
+  const neverLookedPayload = { id: 1, line_items: [] } as ShopifyOrderPayload;
+  const neverLooked = normalizeRestOrder(neverLookedPayload);
+  assert.equal(buildDiscountsJson(neverLooked.discounts), null);
+});
+
+run("processShopifyOrder (orders/create): discount sync is additive, flag-gated, and runs AFTER upsertNormalizedOrder, never before", () => {
+  const source = stripLineComments(readSource("app/api/webhooks/shopify/ingest.ts"));
+  const fnMatch = source.match(/export async function processShopifyOrder\([\s\S]*?\n\}/);
+  assert.ok(fnMatch, "expected to find processShopifyOrder's full body");
+  const body = fnMatch![0];
+
+  const upsertIndex = body.indexOf("upsertNormalizedOrder(");
+  const flagCheckIndex = body.indexOf("isShopifyDiscountCaptureEnabled()");
+  const discountCallIndex = body.indexOf("syncShopifyOrderDiscountsViaRpc(");
+  assert.ok(upsertIndex !== -1 && flagCheckIndex !== -1 && discountCallIndex !== -1);
+  assert.ok(upsertIndex < flagCheckIndex, "the existing order/line-item upsert must run before the new discount gate");
+  assert.ok(flagCheckIndex < discountCallIndex, "the flag check must gate the discount RPC call");
+});
+
+run("the sales dashboard calculation (salesCalculations.ts) never reads any discount table or column -- enabling capture cannot change existing totals", () => {
+  const source = readSource("lib/salesCalculations.ts");
+  assert.equal(source.includes("shopify_order_discounts"), false);
+  assert.equal(source.includes("shopify_order_discount_allocations"), false);
+  assert.equal(source.includes("total_discounts"), false);
 });
 
 if (process.exitCode === 1) {
