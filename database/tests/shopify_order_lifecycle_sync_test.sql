@@ -650,6 +650,143 @@ begin
   raise notice 'PASS: test 16 (advance_shopify_sync_checkpoint rejects an expired lease even with correct ownership)';
 end $$;
 
+-- ---------------------------------------------------------------------
+-- Test 17: sync_shopify_order_discounts(), called STANDALONE (not via
+-- sync_shopify_order) -- the exact way the new orders/create discount
+-- call in frontend/app/api/webhooks/shopify/ingest.ts uses it. Exercises
+-- the full no-discount -> add-discount -> remove-discount lifecycle
+-- against an order that already exists (created here via
+-- sync_shopify_order first, mirroring upsertNormalizedOrder() already
+-- having run before this call in the real code path).
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_order_id bigint := -900000017;
+  v_internal_order_id bigint;
+  v_count integer;
+begin
+  perform public.sync_shopify_order(
+    v_order_id, null,
+    jsonb_build_object('orderNumber', '#T17', 'updatedAt', '2026-01-17T00:00:00Z'),
+    null, false, null, 'webhook'
+  );
+  select id into v_internal_order_id from public.shopify_orders where shopify_order_id = v_order_id;
+
+  -- No discount yet: standalone call with an empty array must leave
+  -- zero rows (confirmed empty), same contract as sync_shopify_order's
+  -- own p_discounts handling.
+  perform public.sync_shopify_order_discounts(v_order_id, '[]'::jsonb);
+  select count(*) into v_count from public.shopify_order_discounts where order_id = v_internal_order_id;
+  if v_count != 0 then
+    raise exception 'FAIL (test 17a): expected zero discount rows for a confirmed-empty standalone touch, found %', v_count;
+  end if;
+
+  -- Update adds a discount.
+  perform public.sync_shopify_order_discounts(
+    v_order_id,
+    jsonb_build_array(jsonb_build_object(
+      'applicationIndex', 0, 'applicationType', 'discount_code', 'code', 'ADD10',
+      'valueType', 'fixed_amount', 'valueAmount', 10.00, 'allocations', '[]'::jsonb
+    ))
+  );
+  select count(*) into v_count from public.shopify_order_discounts where order_id = v_internal_order_id;
+  if v_count != 1 then
+    raise exception 'FAIL (test 17b): expected 1 discount row after the standalone add, found %', v_count;
+  end if;
+
+  -- Update removes the discount again.
+  perform public.sync_shopify_order_discounts(v_order_id, '[]'::jsonb);
+  select count(*) into v_count from public.shopify_order_discounts where order_id = v_internal_order_id;
+  if v_count != 0 then
+    raise exception 'FAIL (test 17c): expected zero discount rows after the standalone removal, found %', v_count;
+  end if;
+
+  raise notice 'PASS: test 17 (sync_shopify_order_discounts standalone: no-discount -> add -> remove)';
+end $$;
+
+-- ---------------------------------------------------------------------
+-- Test 18: real production order #15065's shape -- a $60.00
+-- fixed-amount discount code, capped by Shopify to $54.72 actually
+-- allocated. Run end to end via sync_shopify_order (confirming the
+-- 20261029 extraction/refactor did not change its external behavior)
+-- and asserts the configured value (60) and the actually-allocated
+-- total (54.72) land in the correct, separate columns -- never
+-- conflated. See frontend/scripts/verifyShopifyLifecycleIngestion.ts's
+-- matching TypeScript-level test of the same real shape.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_order_id bigint := -900000018;
+  v_line_item_shopify_id bigint := -800000018;
+  v_internal_order_id bigint;
+  v_discount_row record;
+  v_allocated_total numeric;
+begin
+  perform public.sync_shopify_order(
+    v_order_id, null,
+    jsonb_build_object('orderNumber', '#T18', 'updatedAt', '2026-01-18T00:00:00Z'),
+    jsonb_build_array(jsonb_build_object('shopifyLineItemId', v_line_item_shopify_id, 'title', 'Jersey', 'quantity', 1, 'price', 54.72)),
+    true,
+    jsonb_build_array(jsonb_build_object(
+      'applicationIndex', 0, 'applicationType', 'discount_code', 'code', '8PW77TL',
+      'valueType', 'fixed_amount', 'valueAmount', 60.00,
+      'allocations', jsonb_build_array(jsonb_build_object(
+        'orderLineItemShopifyId', v_line_item_shopify_id, 'isShippingLineAllocation', false, 'allocatedAmount', 54.72
+      ))
+    )),
+    'webhook'
+  );
+  select id into v_internal_order_id from public.shopify_orders where shopify_order_id = v_order_id;
+
+  select * into v_discount_row from public.shopify_order_discounts where order_id = v_internal_order_id;
+  if v_discount_row.value_amount != 60.00 then
+    raise exception 'FAIL (test 18a): expected the discount''s OWN configured value_amount to be 60.00, got %', v_discount_row.value_amount;
+  end if;
+  if v_discount_row.code != '8PW77TL' then
+    raise exception 'FAIL (test 18b): expected code 8PW77TL, got %', v_discount_row.code;
+  end if;
+
+  select sum(allocated_amount) into v_allocated_total
+  from public.shopify_order_discount_allocations
+  where order_discount_id = v_discount_row.id;
+  if v_allocated_total != 54.72 then
+    raise exception 'FAIL (test 18c): expected the actually-allocated total to be 54.72, got %', v_allocated_total;
+  end if;
+  if v_allocated_total = v_discount_row.value_amount then
+    raise exception 'FAIL (test 18d): the configured value and the actually-allocated total must never be equal in this scenario (60.00 vs 54.72) -- got the same value for both, which would indicate they are being conflated';
+  end if;
+
+  raise notice 'PASS: test 18 (real #15065 shape: configured $60 vs. actually-allocated $54.72, stored separately)';
+end $$;
+
+-- ---------------------------------------------------------------------
+-- Test 19: sync_shopify_order_discounts() called for a shopify_order_id
+-- with no existing shopify_orders row raises an exception (fails
+-- closed) rather than silently creating a stub -- a deliberate
+-- difference from sync_shopify_fulfillment/sync_shopify_refund's
+-- stub-order strategy, since this function is only ever meant to be
+-- called immediately after the order's own row already exists in the
+-- same transaction (either via sync_shopify_order itself, or via
+-- orders/create's upsertNormalizedOrder() having already run).
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_missing_order_id bigint := -900000019;
+  v_raised boolean := false;
+begin
+  begin
+    perform public.sync_shopify_order_discounts(v_missing_order_id, '[]'::jsonb);
+  exception when others then
+    v_raised := true;
+  end;
+
+  if not v_raised then
+    raise exception 'FAIL (test 19): expected an exception when no shopify_orders row exists for the given shopify_order_id';
+  end if;
+
+  raise notice 'PASS: test 19 (sync_shopify_order_discounts fails closed for a non-existent order, no stub created)';
+end $$;
+
 -- Nothing above is persisted -- this is deliberate (see the header
 -- comment). Remove this ROLLBACK (and replace with COMMIT) only when
 -- intentionally running against a disposable/local database where

@@ -49,3 +49,8 @@ test-order.json
 # source, regenerated on every run. (This .gitignore lives in frontend/, so
 # the pattern below is relative to this directory, i.e. frontend/scripts/.)
 scripts/shopify_backfill_*.json
+
+# Local run state for scripts/testShopifyLifecycleWebhook.ts's Test #2
+# scenarios (last applied updated_at, last live request for replay) -- not
+# source, machine/session-specific, never meant to be shared or committed.
+scripts/shopify_lifecycle_test2_state.json
