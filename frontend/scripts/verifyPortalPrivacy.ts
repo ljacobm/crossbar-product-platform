@@ -504,6 +504,49 @@ run("existing staff Sales page file is untouched by this slice", () => {
   assert.ok(source.includes("requireStaffSession") === false); // page itself never calls it directly -- unchanged from before
 });
 
+// Staff-facing discount display feature: the new discountTotal/
+// discountCodes fields on SalesLineItemRow (lib/onlineStoreSalesTypes.ts)
+// are the exact kind of field this portal split was designed to contain --
+// these checks confirm the containment actually held, not just that it was
+// intended to.
+run("CustomerLineItem/toCustomerSalesData never reference the new discount display fields", () => {
+  const source = readSource("lib/customerPortalSalesData.ts");
+  const typeBlockMatch = source.match(/export type CustomerLineItem = \{([\s\S]*?)\n\};/);
+  assert.ok(typeBlockMatch, "expected to find the CustomerLineItem type definition");
+  assert.equal(/\bdiscountTotal\s*:/.test(typeBlockMatch![1]), false);
+  assert.equal(/\bdiscountCodes\s*:/.test(typeBlockMatch![1]), false);
+
+  const mapperMatch = source.match(/function toCustomerSalesData\(data: StoreSalesData\): CustomerSalesData \{([\s\S]*?)\n\}/);
+  assert.ok(mapperMatch, "expected to find toCustomerSalesData's body");
+  assert.equal(mapperMatch![1].includes("discountTotal"), false);
+  assert.equal(mapperMatch![1].includes("discountCodes"), false);
+
+  // The file as a whole never reads shopify_order_discounts either --
+  // the portal's own query path (buildStoreSalesData, shared code) is
+  // the only place that table is read, and this file never re-queries
+  // it independently.
+  assert.equal(source.includes("shopify_order_discounts"), false);
+});
+
+run("the customer portal page never enables showDiscounts on SalesLineItemsTable", () => {
+  const source = stripLineComments(readSource("app/portal/[token]/page.tsx"));
+  const callMatch = source.match(/<SalesLineItemsTable[^/]*\/>/);
+  assert.ok(callMatch, "expected to find the SalesLineItemsTable usage");
+  assert.equal(callMatch![0].includes("showDiscounts"), false);
+});
+
+run("the internal staff Sales page enables showDiscounts on SalesLineItemsTable", () => {
+  const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/sales/page.tsx"));
+  const callMatch = source.match(/<SalesLineItemsTable[^/]*\/>/);
+  assert.ok(callMatch, "expected to find the SalesLineItemsTable usage");
+  assert.ok(callMatch![0].includes("showDiscounts"));
+});
+
+run("SalesLineItemsTable's showDiscounts prop defaults to false", () => {
+  const source = readSource("components/SalesLineItemsTable.tsx");
+  assert.ok(/showDiscounts\s*=\s*false/.test(source));
+});
+
 run("getActivePortalLink checks staff auth, then the global flag, before any database query, and re-checks active status and expiry, for any store", () => {
   const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/actions.ts"));
   const fnMatch = source.match(

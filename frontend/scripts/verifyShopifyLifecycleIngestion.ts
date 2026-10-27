@@ -294,11 +294,45 @@ run("processShopifyOrder (orders/create): discount sync is additive, flag-gated,
   assert.ok(flagCheckIndex < discountCallIndex, "the flag check must gate the discount RPC call");
 });
 
-run("the sales dashboard calculation (salesCalculations.ts) never reads any discount table or column -- enabling capture cannot change existing totals", () => {
+// Updated for the staff-facing discount display feature: salesCalculations.ts
+// now legitimately reads shopify_orders.total_discounts/shopify_order_discounts
+// (for display-only fields attached to each SalesLineItemRow), so the blanket
+// "never reads any discount table or column" check from before that feature
+// no longer applies. What must still hold -- and is checked precisely here --
+// is that the TOTALS/BEST-SELLERS computation itself (totalSales, totalItems,
+// bestSellerMap, both scoped to `let totalSales = 0;` through the loop that
+// populates bestSellerMap, before any lineItems/discount display code begins)
+// never references a discount table or column. This is the actual guarantee
+// the sales dashboard's existing numbers depend on, not merely "the word
+// doesn't appear in the file."
+run("the sales totals/best-sellers computation itself never reads any discount table or column -- enabling capture cannot change existing totals", () => {
+  const source = stripLineComments(readSource("lib/salesCalculations.ts"));
+  const totalsStart = source.indexOf("let totalSales = 0;");
+  // Boundary is the discount-fetch block's own start, NOT the lineItems
+  // mapping below it -- the discount fetch (scopedOrderIds/
+  // discountsByOrderId) legitimately sits textually between the totals
+  // loop and the lineItems mapping, so ending the slice at "const
+  // lineItems:" would wrongly include it.
+  const totalsEnd = source.indexOf("const scopedOrderIds =");
+  assert.ok(totalsStart !== -1, "expected to find the start of the totals computation");
+  assert.ok(totalsEnd !== -1, "expected to find the start of the discount-fetch block");
+  assert.ok(totalsStart < totalsEnd, "totals computation must precede the discount-fetch block");
+
+  const totalsBlock = source.slice(totalsStart, totalsEnd);
+  assert.equal(totalsBlock.toLowerCase().includes("discount"), false);
+});
+
+// The new discount display fields must be attached to SalesLineItemRow (for
+// the staff page to render), sourced from shopify_orders.total_discounts and
+// shopify_order_discounts, and never summed per line item -- confirmed here
+// by checking the discount lookup is keyed by distinct order id (a Map), not
+// accumulated inside the per-line-item totals loop checked above.
+run("discount display data is attached per order (via a Map keyed by order id), not accumulated per line item", () => {
   const source = readSource("lib/salesCalculations.ts");
-  assert.equal(source.includes("shopify_order_discounts"), false);
-  assert.equal(source.includes("shopify_order_discount_allocations"), false);
-  assert.equal(source.includes("total_discounts"), false);
+  assert.ok(source.includes("shopify_order_discounts"));
+  assert.ok(source.includes("total_discounts"));
+  assert.ok(source.includes("discountsByOrderId"));
+  assert.ok(/new Map<number, SalesLineItemDiscount\[\]>/.test(source));
 });
 
 if (process.exitCode === 1) {
