@@ -24,6 +24,10 @@ export default function SalesSummaryCards({
       <StatCard title="Lifetime Paid Out" value={formatMoney(lifetimePaidOut)} />
       <StatCard title="Lifetime Balance Due" value={formatMoney(lifetimeBalanceDue)} />
       <StatCard title={`Total Items (${rangeLabel})`} value={summary.totalItems} />
+      <StatCard
+        title={`Total Discounts (${rangeLabel})`}
+        value={summary.totalDiscounts != null ? formatMoney(summary.totalDiscounts) : "—"}
+      />
     </div>
   );
 }

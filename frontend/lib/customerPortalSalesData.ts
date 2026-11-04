@@ -61,6 +61,12 @@ export type CustomerSalesSummary = {
   fundraiserRate: number;
   fundraiserEarned: number;
   lifetimeFundraiserEarned: number;
+  // The new aggregate discount total ONLY -- no per-order or per-code
+  // breakdown is exposed here. The staff-only, per-order discount
+  // display fields on SalesLineItemRow are never mapped into any
+  // customer-facing type by this file. See lib/storeDiscountTotal.ts
+  // for how this aggregate figure is computed.
+  totalDiscounts: number | null;
 };
 
 export type CustomerLineItem = {
@@ -122,6 +128,7 @@ function toCustomerSalesData(data: StoreSalesData): CustomerSalesData {
       fundraiserRate: data.summary.fundraiserRate,
       fundraiserEarned: data.summary.fundraiserEarned,
       lifetimeFundraiserEarned: data.summary.lifetimeFundraiserEarned,
+      totalDiscounts: data.summary.totalDiscounts,
     },
     lineItems: data.lineItems.map((item) => ({
       lineItemId: item.lineItemId,

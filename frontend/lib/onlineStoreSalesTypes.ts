@@ -16,6 +16,14 @@ export interface SalesSummary {
   fundraiserRate: number;
   fundraiserEarned: number; // scoped to the selected date range
   lifetimeFundraiserEarned: number; // always lifetime, used for the balance calc
+  // Sum of shopify_orders.total_discounts across this store's distinct
+  // orders in the selected date range, counted once per order regardless
+  // of line-item count. Orders that touch more than one online store are
+  // excluded entirely, never attributed to any one of them -- see
+  // lib/storeDiscountTotal.ts for the full rationale. `null` means the
+  // underlying lookup itself failed (genuinely unknown), never a
+  // confirmed $0 -- the display layer must not treat it as zero.
+  totalDiscounts: number | null;
 }
 
 // Discount display shape for one order's discount application -- NOT the

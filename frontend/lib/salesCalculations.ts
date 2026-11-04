@@ -1,6 +1,7 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { resolveOrderLastName } from "@/lib/orderLastName";
+import { computeTotalDiscounts, type OrderDiscountInput } from "@/lib/storeDiscountTotal";
 import type {
   BestSellerRow,
   DateRange,
@@ -59,6 +60,24 @@ import type {
 // an oversight. See scripts/verifyPortalPrivacy.ts for the checks that no
 // other part of these address/customer objects (first name, email, phone,
 // street address) ever reaches either SalesLineItemRow or CustomerLineItem.
+//
+// Total Discounts summary card (shown to BOTH staff and the customer
+// portal): sums shopify_orders.total_discounts across this store's
+// distinct orders in the selected date range, counted once per order
+// regardless of line-item count. MULTI-STORE ORDERS: online_store_id
+// lives on the line item, not the order, so a single order can contain
+// items from more than one store (see the "financial queries are scoped
+// at the line-item level" test in scripts/verifyPortalPrivacy.ts) --
+// total_discounts has no per-store breakdown, so such an order's
+// discount can never be safely attributed to any one store. It is
+// excluded from EVERY store's total rather than double-counted or
+// arbitrarily assigned -- see lib/storeDiscountTotal.ts for the full
+// investigation and resolution. Computed via a second, unfiltered
+// shopify_order_line_items query (scoped to the same order ids, but
+// deliberately NOT filtered by online_store_id -- that is the whole
+// point, to see every store an order touches); this lookup is also
+// non-throwing, same as the discount-codes lookup above, and leaves
+// summary.totalDiscounts null (never a fabricated 0) on failure.
 
 const BEST_SELLERS_LIMIT = 10;
 
@@ -89,6 +108,11 @@ type RawOrderDiscountRow = {
   application_index: number | null;
   application_type: string | null;
   code: string | null;
+};
+
+type RawOrderLineItemStoreRow = {
+  order_id: number;
+  online_store_id: number | null;
 };
 
 function toNumber(value: number | string | null): number {
@@ -223,6 +247,56 @@ export async function buildStoreSalesData(
     }
   }
 
+  // Total Discounts summary card. See the header comment's "Total
+  // Discounts" section for the full multi-store rationale. Queries every
+  // store an order touches (no online_store_id filter here -- that is
+  // the point), for the same scopedOrderIds already date-filtered above.
+  let totalDiscounts: number | null = null;
+  if (scopedOrderIds.length > 0) {
+    try {
+      const { data: membershipRows, error: membershipError } = await supabaseAdmin
+        .from("shopify_order_line_items")
+        .select("order_id, online_store_id")
+        .in("order_id", scopedOrderIds);
+
+      if (membershipError) {
+        throw new Error(membershipError.message);
+      }
+
+      const storeIdsByOrder = new Map<number, Set<number>>();
+      for (const row of (membershipRows as unknown as RawOrderLineItemStoreRow[]) ?? []) {
+        if (row.online_store_id == null) continue;
+        const existing = storeIdsByOrder.get(row.order_id) ?? new Set<number>();
+        existing.add(row.online_store_id);
+        storeIdsByOrder.set(row.order_id, existing);
+      }
+
+      const totalDiscountsByOrder = new Map<number, number | null>();
+      for (const row of scopedRows) {
+        if (row.order?.id != null && !totalDiscountsByOrder.has(row.order.id)) {
+          totalDiscountsByOrder.set(
+            row.order.id,
+            row.order.total_discounts != null ? toNumber(row.order.total_discounts) : null
+          );
+        }
+      }
+
+      const orderDiscountInputs: OrderDiscountInput[] = scopedOrderIds.map((orderId) => ({
+        orderId,
+        totalDiscounts: totalDiscountsByOrder.get(orderId) ?? null,
+        storeIds: Array.from(storeIdsByOrder.get(orderId) ?? []),
+      }));
+
+      totalDiscounts = computeTotalDiscounts(orderDiscountInputs);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error(`Failed to compute total discounts for store ${storeId} (sales data still renders without this figure): ${message}`);
+      totalDiscounts = null;
+    }
+  } else {
+    totalDiscounts = 0;
+  }
+
   const lineItems: SalesLineItemRow[] = scopedRows
     .map((row) => ({
       lineItemId: row.id,
@@ -255,6 +329,7 @@ export async function buildStoreSalesData(
       fundraiserRate,
       fundraiserEarned: totalSales * fundraiserRate,
       lifetimeFundraiserEarned: lifetimeTotalSales * fundraiserRate,
+      totalDiscounts,
     },
     lineItems,
     bestSellers,
