@@ -134,7 +134,7 @@ export default async function CustomerPortalPage({
 
         <div>
           <h2 className="mb-3 text-lg font-semibold text-slate-900">Detailed Sales</h2>
-          <SalesLineItemsTable lineItems={salesData.lineItems} />
+          <SalesLineItemsTable lineItems={salesData.lineItems} showDiscountCode />
         </div>
 
         <CustomerPayoutsSection payouts={payouts} />

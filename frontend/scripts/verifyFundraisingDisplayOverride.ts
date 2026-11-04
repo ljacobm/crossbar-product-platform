@@ -99,6 +99,33 @@ run("hideFundraisingCards defaults to false on SalesSummaryCards", () => {
   assert.ok(/hideFundraisingCards\s*=\s*false/.test(source));
 });
 
+// --- Grid width: 3 cards get a 3-column desktop grid, 6 cards get a -------
+// --- 6-column one, both never cramped at the narrow end of "desktop" -------
+
+run("the grid uses 3 desktop columns when fundraising cards are hidden, 6 when they are not", () => {
+  const source = readSource("components/SalesSummaryCards.tsx");
+  const condMatch = source.match(/const gridClassName = hideFundraisingCards\s*\n\s*\?\s*"([^"]+)"\s*\n\s*:\s*"([^"]+)";/);
+  assert.ok(condMatch, "expected to find the conditional gridClassName assignment");
+  const [, hiddenClassName, shownClassName] = condMatch;
+
+  assert.ok(hiddenClassName.includes("md:grid-cols-3"), "the 3-card grid must reach 3 columns");
+  assert.equal(/grid-cols-6/.test(hiddenClassName), false, "the 3-card grid must never go to 6 columns");
+
+  assert.ok(shownClassName.includes("xl:grid-cols-6"), "the 6-card grid must reach 6 columns");
+});
+
+run("the 6-card grid waits until xl (not the narrower lg) to go to 6 columns, so currency values stay comfortable", () => {
+  const source = readSource("components/SalesSummaryCards.tsx");
+  assert.equal(source.includes("lg:grid-cols-6"), false, "6 columns must not kick in as early as lg");
+  assert.ok(source.includes("xl:grid-cols-6"));
+});
+
+run("StatCard itself (shared by unrelated dashboards) is untouched by this layout change", () => {
+  const source = readSource("components/StatCard.tsx");
+  assert.equal(/grid-cols/.test(source), false, "StatCard must not contain any grid-column class");
+  assert.equal(source.includes("text-2xl"), false, "StatCard's value text size must be unchanged");
+});
+
 // --- Wiring: staff page -----------------------------------------------------
 
 run("the internal staff Sales page computes hideFundraisingCards from the store's slug via isFundraisingHiddenForStore", () => {

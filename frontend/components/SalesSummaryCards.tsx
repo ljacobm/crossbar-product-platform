@@ -20,8 +20,22 @@ export default function SalesSummaryCards({
   rangeLabel: string;
   hideFundraisingCards?: boolean;
 }) {
+  // Column count adapts to how many cards are actually visible, so a
+  // store with fundraising cards hidden gets three full-width cards
+  // instead of three narrow ones stranded in a 6-column grid. StatCard
+  // (components/StatCard.tsx) is shared by unrelated dashboards
+  // elsewhere in the app, so its own text size is never changed here --
+  // this only ever adjusts THIS grid's own breakpoints. The 6-card case
+  // waits until xl (not lg) to go to 6 columns specifically so a
+  // 4-digit currency value like $3,459.72 always has a comfortably wide
+  // column to render in, never a cramped one right at the desktop
+  // breakpoint's minimum width.
+  const gridClassName = hideFundraisingCards
+    ? "mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3"
+    : "mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6";
+
   return (
-    <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+    <div className={gridClassName}>
       <StatCard title={`Total Sales (${rangeLabel})`} value={formatMoney(summary.totalSales)} />
       {!hideFundraisingCards && (
         <StatCard

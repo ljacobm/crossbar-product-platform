@@ -178,10 +178,14 @@ run("SalesLineItemsTable renders via resolveDiscountDisplayState's four states, 
   }
 });
 
-run("the customer portal still never references the discount display fields or helper", () => {
+// Updated for the customer-facing "Discount Code" column feature:
+// discountCodes IS now deliberately exposed (code only) -- see
+// scripts/verifySalesDataCustomerDiscountCode.ts. The order-level
+// discountTotal amount and the staff-only discountDisplayState helper
+// remain fully excluded, unchanged.
+run("the customer portal still never references the order-level discount amount or the staff-only discount display helper", () => {
   const source = readSource("lib/customerPortalSalesData.ts");
   assert.equal(source.includes("discountTotal"), false);
-  assert.equal(source.includes("discountCodes"), false);
   assert.equal(source.includes("discountDisplayState"), false);
 });
 
