@@ -5,6 +5,7 @@ import SalesLineItemsTable from "@/components/SalesLineItemsTable";
 import PayoutsSection from "@/components/PayoutsSection";
 import { getOnlineStoreById } from "@/lib/onlineStoreData";
 import { getStorePayouts, getStoreSalesData } from "@/lib/onlineStoreSalesData";
+import { isFundraisingHiddenForStore } from "@/lib/fundraisingDisplayOverrides";
 import type { DateRange } from "@/lib/onlineStoreSalesTypes";
 
 function resolveDateRange(searchParams: {
@@ -71,6 +72,7 @@ export default async function StoreSalesDataPage({
         lifetimePaidOut={lifetimePaidOut}
         lifetimeBalanceDue={lifetimeBalanceDue}
         rangeLabel={label}
+        hideFundraisingCards={isFundraisingHiddenForStore(store.slug)}
       />
 
       <p className="text-xs text-slate-400">
