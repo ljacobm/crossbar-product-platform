@@ -35,26 +35,28 @@ function stripLineComments(source: string): string {
 
 // --- SalesLineItemsTable: the new column ------------------------------------
 
-run("renderDiscountCodeCell shows a dash when there is no code, never 'Discount data unavailable' or 'No discount'", () => {
+// Note: renderDiscountCodeCell's state-by-state behavior (dash vs.
+// "Discount Applied" vs. a real code vs. "Automatic Discount") is
+// covered in depth by scripts/verifySalesDataDiscountAppliedFallback.ts.
+// This file keeps only the checks still specific to the column's own
+// wiring/placement and the staff-only amount never appearing in it.
+run("renderDiscountCodeCell never shows the richer staff-only states or any order-level amount", () => {
   const source = readSource("components/SalesLineItemsTable.tsx");
-  const fnMatch = source.match(/function renderDiscountCodeCell\([\s\S]*?\n\}/);
-  assert.ok(fnMatch, "expected to find renderDiscountCodeCell");
-  const body = fnMatch![0];
-  assert.ok(body.includes('codes.length === 0'));
-  assert.ok(body.includes("—"), "expected the dash character for the empty case");
+  // Sliced between its own start and the next top-level export, rather
+  // than matched up to the first "\n}" -- the function's own parameter
+  // type is itself multi-line and closes with a column-0 "}" well
+  // before the function's real body/closing brace.
+  const startIndex = source.indexOf("function renderDiscountCodeCell(");
+  const endIndex = source.indexOf("export default function SalesLineItemsTable");
+  assert.ok(startIndex !== -1 && endIndex !== -1 && startIndex < endIndex, "expected to find renderDiscountCodeCell");
+  const body = source.slice(startIndex, endIndex);
+  assert.ok(body.includes("—"), "expected the dash character for the empty/no-evidence case");
   assert.equal(body.includes("Discount data unavailable"), false);
   assert.equal(body.includes("No discount"), false);
   assert.equal(body.includes("Code unavailable"), false);
   // No order-level amount is ever rendered by this function.
   assert.equal(body.includes("formatMoney"), false);
   assert.equal(body.includes("Order discount"), false);
-});
-
-run("renderDiscountCodeCell labels an automatic discount distinctly from a named code, same convention as the staff column", () => {
-  const source = readSource("components/SalesLineItemsTable.tsx");
-  const fnMatch = source.match(/function renderDiscountCodeCell\([\s\S]*?\n\}/);
-  assert.ok(fnMatch);
-  assert.ok(fnMatch![0].includes('"Automatic discount"'));
 });
 
 run("showDiscountCode is a separate prop from showDiscounts, both default to false", () => {
@@ -101,11 +103,11 @@ run("CustomerLineItem exposes discountCodes but never discountTotal (the order-l
   assert.equal(/\bdiscountTotal\s*:/.test(typeMatch![1]), false);
 });
 
-run("toCustomerSalesData maps discountCodes with a safe fallback to an empty array", () => {
+run("toCustomerSalesData derives discountCodes from resolveDiscountDisplayState, with a safe fallback to an empty array", () => {
   const source = stripLineComments(readSource("lib/customerPortalSalesData.ts"));
-  const mapperMatch = source.match(/lineItems: data\.lineItems\.map\(\(item\) => \(\{([\s\S]*?)\n    \}\)\),/);
+  const mapperMatch = source.match(/lineItems: data\.lineItems\.map\(\(item\) => \{([\s\S]*?)\n    \}\),/);
   assert.ok(mapperMatch, "expected to find the lineItems mapper body");
-  assert.ok(mapperMatch![1].includes("discountCodes: item.discountCodes ?? []"));
+  assert.ok(mapperMatch![1].includes('discountCodes: discountState.kind === "codes" ? discountState.codes : []'));
   assert.equal(mapperMatch![1].includes("discountTotal"), false);
 });
 
