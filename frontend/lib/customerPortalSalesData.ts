@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { resolvePortalStoreId, recordPortalAccess } from "@/lib/portalAccess";
 import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
 import { buildStoreSalesData, buildStorePayouts } from "@/lib/salesCalculations";
+import { isFundraisingHiddenForStore } from "@/lib/fundraisingDisplayOverrides";
 import type { DateRange, StoreSalesData } from "@/lib/onlineStoreSalesTypes";
 
 // Phase 4D, Slice 3: the customer portal's single data entry point.
@@ -112,6 +113,11 @@ export type CustomerPayoutRow = {
 
 export type CustomerPortalData = {
   storeName: string;
+  // TEMPORARY, display-only: true for a store that isn't currently run
+  // as a fundraiser (see lib/fundraisingDisplayOverrides.ts). The
+  // store's slug itself is never exposed here -- only this derived
+  // boolean crosses out of getStoreNameAndRate().
+  hideFundraisingCards: boolean;
   salesData: CustomerSalesData;
   payouts: CustomerPayoutRow[];
 };
@@ -170,24 +176,30 @@ function toCustomerPayout(payout: {
 
 async function getStoreNameAndRate(
   storeId: number
-): Promise<{ name: string; fundraiserRate: number } | null> {
+): Promise<{ name: string; fundraiserRate: number; hideFundraisingCards: boolean } | null> {
   // online_stores has RLS enabled with zero anon/authenticated policies
   // (Phase B) -- only service_role can read it. Not routed through
   // getOnlineStoreById() (lib/onlineStoreData.ts): that function calls
   // requireStaffSession() as its first statement, which would reject
   // every customer request outright. Authorization here already
   // happened one level up, when the token was resolved -- this is a
-  // plain, narrow, customer-safe lookup (name + rate only, nothing else
-  // on the row).
+  // plain, narrow, customer-safe lookup (name + rate + slug, nothing
+  // else on the row). slug is read ONLY to compute the TEMPORARY
+  // hideFundraisingCards override below -- the slug value itself is
+  // never returned or exposed any further.
   const { data, error } = await supabaseAdmin
     .from("online_stores")
-    .select("name, fundraiser_rate")
+    .select("name, fundraiser_rate, slug")
     .eq("id", storeId)
     .maybeSingle();
 
   if (error || !data) return null;
 
-  return { name: data.name, fundraiserRate: Number(data.fundraiser_rate) };
+  return {
+    name: data.name,
+    fundraiserRate: Number(data.fundraiser_rate),
+    hideFundraisingCards: isFundraisingHiddenForStore(data.slug),
+  };
 }
 
 // Returns null for every failure case -- invalid/unknown/revoked/expired
@@ -227,6 +239,7 @@ export async function getCustomerPortalData(
 
   return {
     storeName: store.name,
+    hideFundraisingCards: store.hideFundraisingCards,
     salesData: toCustomerSalesData(salesData),
     payouts: rawPayouts.map(toCustomerPayout),
   };

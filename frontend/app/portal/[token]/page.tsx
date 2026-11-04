@@ -103,7 +103,7 @@ export default async function CustomerPortalPage({
     return <UnavailableLinkPage />;
   }
 
-  const { storeName, salesData, payouts } = data;
+  const { storeName, hideFundraisingCards, salesData, payouts } = data;
   const lifetimePaidOut = payouts.reduce((sum, payout) => sum + payout.amount, 0);
   const lifetimeBalanceDue = salesData.summary.lifetimeFundraiserEarned - lifetimePaidOut;
 
@@ -119,6 +119,7 @@ export default async function CustomerPortalPage({
           lifetimePaidOut={lifetimePaidOut}
           lifetimeBalanceDue={lifetimeBalanceDue}
           rangeLabel={label}
+          hideFundraisingCards={hideFundraisingCards}
         />
 
         <p className="text-xs text-slate-400">
