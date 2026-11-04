@@ -71,6 +71,7 @@ export default function SalesLineItemsTable({
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
             <th className="px-4 py-3">Order #</th>
+            <th className="px-4 py-3">Last Name</th>
             <th className="px-4 py-3">Date</th>
             <th className="px-4 py-3">Line Item / Product</th>
             <th className="px-4 py-3">Quantity</th>
@@ -85,6 +86,7 @@ export default function SalesLineItemsTable({
           {lineItems.map((row) => (
             <tr key={row.lineItemId} className="transition hover:bg-slate-50">
               <td className="px-4 py-3 text-slate-700">{row.orderNumber || "-"}</td>
+              <td className="px-4 py-3 text-slate-700">{row.lastName || "—"}</td>
               <td className="px-4 py-3 text-slate-700">{formatDate(row.orderDate)}</td>
               <td className="px-4 py-3 text-slate-900">{row.title || "-"}</td>
               <td className="px-4 py-3 text-slate-700">{row.quantity}</td>

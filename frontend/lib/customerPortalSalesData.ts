@@ -61,12 +61,26 @@ export type CustomerSalesSummary = {
   fundraiserRate: number;
   fundraiserEarned: number;
   lifetimeFundraiserEarned: number;
+  // The new aggregate discount total ONLY -- no per-order or per-code
+  // breakdown is exposed here. The staff-only, per-order discount
+  // display fields on SalesLineItemRow are never mapped into any
+  // customer-facing type by this file. See lib/storeDiscountTotal.ts
+  // for how this aggregate figure is computed.
+  totalDiscounts: number | null;
 };
 
 export type CustomerLineItem = {
   lineItemId: number;
   orderNumber: string | null;
   orderDate: string | null;
+  // Deliberate, approved exception to this file's "new staff-facing
+  // fields never reach the customer" convention -- coaches/store admins
+  // need to identify who placed each order. ONLY the last name is
+  // exposed here; never a first name, email, phone, or any part of a
+  // shipping/billing address. See lib/orderLastName.ts and
+  // scripts/verifyPortalPrivacy.ts for the derivation and the checks
+  // that nothing broader than this one string ever reaches this type.
+  lastName: string | null;
   title: string | null;
   quantity: number;
   itemNumber: string | null;
@@ -114,11 +128,13 @@ function toCustomerSalesData(data: StoreSalesData): CustomerSalesData {
       fundraiserRate: data.summary.fundraiserRate,
       fundraiserEarned: data.summary.fundraiserEarned,
       lifetimeFundraiserEarned: data.summary.lifetimeFundraiserEarned,
+      totalDiscounts: data.summary.totalDiscounts,
     },
     lineItems: data.lineItems.map((item) => ({
       lineItemId: item.lineItemId,
       orderNumber: item.orderNumber,
       orderDate: item.orderDate,
+      lastName: item.lastName,
       title: item.title,
       quantity: item.quantity,
       itemNumber: item.itemNumber,

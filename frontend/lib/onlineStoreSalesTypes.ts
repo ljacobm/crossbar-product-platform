@@ -16,6 +16,14 @@ export interface SalesSummary {
   fundraiserRate: number;
   fundraiserEarned: number; // scoped to the selected date range
   lifetimeFundraiserEarned: number; // always lifetime, used for the balance calc
+  // Sum of shopify_orders.total_discounts across this store's distinct
+  // orders in the selected date range, counted once per order regardless
+  // of line-item count. Orders that touch more than one online store are
+  // excluded entirely, never attributed to any one of them -- see
+  // lib/storeDiscountTotal.ts for the full rationale. `null` means the
+  // underlying lookup itself failed (genuinely unknown), never a
+  // confirmed $0 -- the display layer must not treat it as zero.
+  totalDiscounts: number | null;
 }
 
 // Discount display shape for one order's discount application -- NOT the
@@ -33,6 +41,15 @@ export interface SalesLineItemRow {
   lineItemId: number;
   orderNumber: string | null;
   orderDate: string | null;
+  // The order's shipping recipient last name, falling back to the
+  // billing address's then the Shopify customer record's last name (see
+  // lib/orderLastName.ts). ORDER-level, identical on every line item row
+  // of the same order, same as orderNumber/orderDate. `null` means none
+  // of the three sources had a usable value -- the display layer shows
+  // "-", never a blank cell. Deliberately ONLY a last name: this field
+  // must never carry a first name, full name, email, phone, or any part
+  // of a shipping/billing address -- see scripts/verifyPortalPrivacy.ts.
+  lastName: string | null;
   title: string | null;
   quantity: number;
   itemNumber: string | null;

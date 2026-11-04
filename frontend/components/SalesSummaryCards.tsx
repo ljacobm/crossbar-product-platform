@@ -14,7 +14,7 @@ export default function SalesSummaryCards({
   rangeLabel: string;
 }) {
   return (
-    <div className="mb-6 grid gap-4 md:grid-cols-3 xl:grid-cols-5">
+    <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
       <StatCard title={`Total Sales (${rangeLabel})`} value={formatMoney(summary.totalSales)} />
       <StatCard
         title={`Fundraiser Earned (${rangeLabel})`}
@@ -24,6 +24,10 @@ export default function SalesSummaryCards({
       <StatCard title="Lifetime Paid Out" value={formatMoney(lifetimePaidOut)} />
       <StatCard title="Lifetime Balance Due" value={formatMoney(lifetimeBalanceDue)} />
       <StatCard title={`Total Items (${rangeLabel})`} value={summary.totalItems} />
+      <StatCard
+        title={`Total Discounts (${rangeLabel})`}
+        value={summary.totalDiscounts != null ? formatMoney(summary.totalDiscounts) : "—"}
+      />
     </div>
   );
 }
