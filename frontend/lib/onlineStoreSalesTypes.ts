@@ -33,6 +33,15 @@ export interface SalesLineItemRow {
   lineItemId: number;
   orderNumber: string | null;
   orderDate: string | null;
+  // The order's shipping recipient last name, falling back to the
+  // billing address's then the Shopify customer record's last name (see
+  // lib/orderLastName.ts). ORDER-level, identical on every line item row
+  // of the same order, same as orderNumber/orderDate. `null` means none
+  // of the three sources had a usable value -- the display layer shows
+  // "-", never a blank cell. Deliberately ONLY a last name: this field
+  // must never carry a first name, full name, email, phone, or any part
+  // of a shipping/billing address -- see scripts/verifyPortalPrivacy.ts.
+  lastName: string | null;
   title: string | null;
   quantity: number;
   itemNumber: string | null;

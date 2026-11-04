@@ -63,14 +63,15 @@ function stripSqlComments(source: string): string {
     .join("\n");
 }
 
-const FORBIDDEN_PII_FIELDS = [
-  "email",
-  "phone",
-  "shipping_address",
-  "billing_address",
-  "customer_note",
-  "properties_text",
-];
+// shipping_address/billing_address were REMOVED from this blanket list
+// for the Last Name feature: salesCalculations.ts now deliberately reads
+// them (and the shopify_customers.last_name embed) -- see the dedicated,
+// more precise checks below instead, which confirm the full address
+// objects/customer embed never themselves reach a returned row, only the
+// single derived last-name string does. email/phone/customer_note/
+// properties_text remain fully forbidden -- nothing in this feature
+// reads any of them.
+const FORBIDDEN_PII_FIELDS = ["email", "phone", "customer_note", "properties_text"];
 
 run("salesCalculations.ts select lists never reference customer PII columns", () => {
   const source = readSource("lib/salesCalculations.ts");
@@ -90,6 +91,66 @@ run("salesCalculations.ts select lists never reference customer PII columns", ()
     // reference instead, e.g. `, properties` or `properties,`.
     assert.equal(/[,(]\s*properties\s*[,)]/.test(block), false);
   }
+});
+
+// Last Name feature: shipping_address/billing_address/the customer embed
+// ARE now legitimately read (for resolveOrderLastName()), but ONLY
+// .last_name is ever extracted from any of them -- the select lists
+// themselves must never request a broader field (first_name, address1,
+// city, email, phone, etc.) from any of these three sources.
+run("salesCalculations.ts only ever selects last_name from shipping_address/billing_address/the customer embed, never a broader field", () => {
+  const source = readSource("lib/salesCalculations.ts");
+  const selectBlocks = [
+    ...source.matchAll(/\.select\(\s*(?:`([\s\S]*?)`|"([^"]*)")/g),
+  ].map((m) => m[1] ?? m[2]);
+  const mainSelect = selectBlocks.find((block) => block.includes("shipping_address"));
+  assert.ok(mainSelect, "expected to find the select list that reads shipping_address");
+
+  // shipping_address/billing_address are selected as whole jsonb columns
+  // (last_name is extracted in TS afterward, not in the select list
+  // itself) -- but no OTHER address sub-field or customer column is
+  // ever named directly in the select list.
+  for (const forbidden of ["first_name", "address1", "address2", "city", "province", "country", "zip", "email", "phone"]) {
+    assert.equal(mainSelect!.includes(forbidden), false, `select list unexpectedly references "${forbidden}"`);
+  }
+
+  // The nested customer embed must request only last_name.
+  const customerEmbedMatch = mainSelect!.match(/customer:shopify_customers\s*\(([^)]*)\)/);
+  assert.ok(customerEmbedMatch, "expected a customer:shopify_customers(...) embed");
+  assert.equal(customerEmbedMatch![1].trim(), "last_name");
+});
+
+// The full shipping/billing address objects and the customer embed must
+// never themselves be attached to a returned row -- only the single
+// derived string from resolveOrderLastName() may be.
+run("SalesLineItemRow/CustomerLineItem never carry a first name, email, phone, or any shipping/billing address field -- only lastName", () => {
+  for (const file of ["lib/onlineStoreSalesTypes.ts", "lib/customerPortalSalesData.ts"]) {
+    const source = readSource(file);
+    assert.ok(/\blastName\s*[?:]/.test(source), `expected ${file} to declare lastName`);
+    assert.equal(/\bfirstName\s*[?:]/.test(source), false, `${file} must not declare firstName`);
+    assert.equal(/\bshippingAddress\s*[?:]/.test(source), false, `${file} must not declare shippingAddress`);
+    assert.equal(/\bbillingAddress\s*[?:]/.test(source), false, `${file} must not declare billingAddress`);
+    assert.equal(/\bemail\s*[?:]/.test(source), false, `${file} must not declare email`);
+    assert.equal(/\bphone\s*[?:]/.test(source), false, `${file} must not declare phone`);
+  }
+});
+
+run("buildStoreSalesData attaches only resolveOrderLastName()'s return value as lastName, never the raw address/customer objects", () => {
+  const source = stripLineComments(readSource("lib/salesCalculations.ts"));
+  assert.ok(
+    source.includes("lastName: row.order ? resolveOrderLastName(row.order) : null"),
+    "expected lastName to be assigned directly from resolveOrderLastName()'s return value"
+  );
+});
+
+// This is the ONE deliberate exception in this file to "a new
+// staff-facing field never reaches the customer" -- confirmed explicitly
+// rather than just by the type check above allowing it structurally.
+run("toCustomerSalesData explicitly maps lastName -- a deliberate, approved exception, not an oversight", () => {
+  const source = stripLineComments(readSource("lib/customerPortalSalesData.ts"));
+  const mapperMatch = source.match(/function toCustomerSalesData\(data: StoreSalesData\): CustomerSalesData \{([\s\S]*?)\n\}/);
+  assert.ok(mapperMatch, "expected to find toCustomerSalesData's body");
+  assert.ok(mapperMatch![1].includes("lastName: item.lastName"));
 });
 
 run("salesCalculations.ts never reads shopify_orders.total_price", () => {

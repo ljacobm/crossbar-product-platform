@@ -1,5 +1,6 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { resolveOrderLastName } from "@/lib/orderLastName";
 import type {
   BestSellerRow,
   DateRange,
@@ -45,6 +46,19 @@ import type {
 // portal's separate CustomerLineItem type and toCustomerSalesData()
 // allowlist mapper (lib/customerPortalSalesData.ts) are structurally
 // untouched -- these new fields simply never reach that mapper.
+//
+// Last Name column (shown to BOTH staff and the customer portal, unlike
+// the discount column above): shopify_orders.shipping_address/
+// billing_address and shopify_customers.last_name are read here ONLY to
+// derive a single last-name string per order via resolveOrderLastName()
+// (lib/orderLastName.ts) -- the full address objects and the customer
+// embed are never themselves attached to a SalesLineItemRow, only the
+// derived string is. Unlike the discount fields, lastName IS deliberately
+// added to CustomerLineItem/toCustomerSalesData() in
+// lib/customerPortalSalesData.ts -- an explicit, approved exception, not
+// an oversight. See scripts/verifyPortalPrivacy.ts for the checks that no
+// other part of these address/customer objects (first name, email, phone,
+// street address) ever reaches either SalesLineItemRow or CustomerLineItem.
 
 const BEST_SELLERS_LIMIT = 10;
 
@@ -61,6 +75,12 @@ type RawLineItemRow = {
     order_created_at: string | null;
     cancelled_at: string | null;
     total_discounts: number | string | null;
+    // Full Shopify address objects -- read ONLY to extract .last_name
+    // via resolveOrderLastName() below; never attached whole to any
+    // returned row. See the header comment's Last Name section.
+    shipping_address: { last_name?: string | null } | null;
+    billing_address: { last_name?: string | null } | null;
+    customer: { last_name: string | null } | null;
   } | null;
 };
 
@@ -105,7 +125,11 @@ export async function buildStoreSalesData(
     .select(
       `
       id, title, quantity, item_number, price, shopify_product_id,
-      order:shopify_orders!inner ( id, order_number, order_created_at, cancelled_at, total_discounts )
+      order:shopify_orders!inner (
+        id, order_number, order_created_at, cancelled_at, total_discounts,
+        shipping_address, billing_address,
+        customer:shopify_customers ( last_name )
+      )
       `
     )
     .eq("online_store_id", storeId)
@@ -204,6 +228,7 @@ export async function buildStoreSalesData(
       lineItemId: row.id,
       orderNumber: row.order?.order_number ?? null,
       orderDate: row.order?.order_created_at ?? null,
+      lastName: row.order ? resolveOrderLastName(row.order) : null,
       title: row.title,
       quantity: toNumber(row.quantity),
       itemNumber: row.item_number,

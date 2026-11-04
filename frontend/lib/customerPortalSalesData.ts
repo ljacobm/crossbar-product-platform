@@ -67,6 +67,14 @@ export type CustomerLineItem = {
   lineItemId: number;
   orderNumber: string | null;
   orderDate: string | null;
+  // Deliberate, approved exception to this file's "new staff-facing
+  // fields never reach the customer" convention -- coaches/store admins
+  // need to identify who placed each order. ONLY the last name is
+  // exposed here; never a first name, email, phone, or any part of a
+  // shipping/billing address. See lib/orderLastName.ts and
+  // scripts/verifyPortalPrivacy.ts for the derivation and the checks
+  // that nothing broader than this one string ever reaches this type.
+  lastName: string | null;
   title: string | null;
   quantity: number;
   itemNumber: string | null;
@@ -119,6 +127,7 @@ function toCustomerSalesData(data: StoreSalesData): CustomerSalesData {
       lineItemId: item.lineItemId,
       orderNumber: item.orderNumber,
       orderDate: item.orderDate,
+      lastName: item.lastName,
       title: item.title,
       quantity: item.quantity,
       itemNumber: item.itemNumber,
