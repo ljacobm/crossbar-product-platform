@@ -570,19 +570,23 @@ run("existing staff Sales page file is untouched by this slice", () => {
 // are the exact kind of field this portal split was designed to contain --
 // these checks confirm the containment actually held, not just that it was
 // intended to.
-run("CustomerLineItem/toCustomerSalesData never reference the new discount display fields", () => {
+// Updated for the customer-facing "Discount Code" column feature:
+// discountCodes IS now a deliberate, approved exception on
+// CustomerLineItem (the discount CODE only) -- see
+// scripts/verifySalesDataCustomerDiscountCode.ts for the dedicated
+// checks on that addition. discountTotal (the order-level amount)
+// remains fully forbidden here, unchanged.
+run("CustomerLineItem/toCustomerSalesData never reference the order-level discount amount (discountTotal stays staff-only)", () => {
   const source = readSource("lib/customerPortalSalesData.ts");
   const typeBlockMatch = source.match(/export type CustomerLineItem = \{([\s\S]*?)\n\};/);
   assert.ok(typeBlockMatch, "expected to find the CustomerLineItem type definition");
   assert.equal(/\bdiscountTotal\s*:/.test(typeBlockMatch![1]), false);
-  assert.equal(/\bdiscountCodes\s*:/.test(typeBlockMatch![1]), false);
 
   const mapperMatch = source.match(/function toCustomerSalesData\(data: StoreSalesData\): CustomerSalesData \{([\s\S]*?)\n\}/);
   assert.ok(mapperMatch, "expected to find toCustomerSalesData's body");
   assert.equal(mapperMatch![1].includes("discountTotal"), false);
-  assert.equal(mapperMatch![1].includes("discountCodes"), false);
 
-  // The file as a whole never reads shopify_order_discounts either --
+  // The file as a whole never reads shopify_order_discounts directly --
   // the portal's own query path (buildStoreSalesData, shared code) is
   // the only place that table is read, and this file never re-queries
   // it independently.

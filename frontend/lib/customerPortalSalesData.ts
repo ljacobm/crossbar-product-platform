@@ -4,7 +4,7 @@ import { resolvePortalStoreId, recordPortalAccess } from "@/lib/portalAccess";
 import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
 import { buildStoreSalesData, buildStorePayouts } from "@/lib/salesCalculations";
 import { isFundraisingHiddenForStore } from "@/lib/fundraisingDisplayOverrides";
-import type { DateRange, StoreSalesData } from "@/lib/onlineStoreSalesTypes";
+import type { DateRange, SalesLineItemDiscount, StoreSalesData } from "@/lib/onlineStoreSalesTypes";
 
 // Phase 4D, Slice 3: the customer portal's single data entry point.
 // Deliberately NOT a "use server" file, for the same reason as
@@ -82,6 +82,15 @@ export type CustomerLineItem = {
   // scripts/verifyPortalPrivacy.ts for the derivation and the checks
   // that nothing broader than this one string ever reaches this type.
   lastName: string | null;
+  // Second deliberate, approved exception: the discount CODE only --
+  // the order-level discount amount field stays staff-only and is still
+  // never mapped anywhere in this file. Always a plain array here
+  // (normalized from SalesLineItemRow's
+  // three-state undefined/[]/populated contract) since the customer
+  // view doesn't distinguish "lookup failed" from "confirmed no
+  // discount" -- both display as a dash. See
+  // components/SalesLineItemsTable.tsx's renderDiscountCodeCell.
+  discountCodes: SalesLineItemDiscount[];
   title: string | null;
   quantity: number;
   itemNumber: string | null;
@@ -141,6 +150,7 @@ function toCustomerSalesData(data: StoreSalesData): CustomerSalesData {
       orderNumber: item.orderNumber,
       orderDate: item.orderDate,
       lastName: item.lastName,
+      discountCodes: item.discountCodes ?? [],
       title: item.title,
       quantity: item.quantity,
       itemNumber: item.itemNumber,

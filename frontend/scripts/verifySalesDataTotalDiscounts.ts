@@ -165,12 +165,14 @@ run("CustomerSalesSummary exposes only the aggregate totalDiscounts -- no per-or
   assert.equal(/\bdiscountCodes\s*:/.test(typeBlockMatch![1]), false);
   assert.equal(/\bdiscountTotal\s*:/.test(typeBlockMatch![1]), false);
 
-  // CustomerLineItem (the per-row type) must still never carry a
-  // per-order discount breakdown either -- unaffected by this feature.
+  // CustomerLineItem (the per-row type) must still never carry the
+  // order-level discount AMOUNT. discountCodes (the code only) was later
+  // deliberately added as its own approved exception -- see
+  // scripts/verifySalesDataCustomerDiscountCode.ts -- so it is no longer
+  // asserted absent here.
   const lineItemMatch = source.match(/export type CustomerLineItem = \{([\s\S]*?)\n\};/);
   assert.ok(lineItemMatch, "expected to find the CustomerLineItem type definition");
   assert.equal(/\bdiscountTotal\s*:/.test(lineItemMatch![1]), false);
-  assert.equal(/\bdiscountCodes\s*:/.test(lineItemMatch![1]), false);
 });
 
 run("toCustomerSalesData explicitly maps totalDiscounts into the summary -- a deliberate inclusion", () => {

@@ -1,6 +1,6 @@
 import { formatMoney } from "@/lib/formatMoney";
 import { resolveDiscountDisplayState } from "@/lib/discountDisplayState";
-import type { SalesLineItemRow } from "@/lib/onlineStoreSalesTypes";
+import type { SalesLineItemDiscount, SalesLineItemRow } from "@/lib/onlineStoreSalesTypes";
 
 function formatDate(value: string | null): string {
   if (!value) return "-";
@@ -50,12 +50,36 @@ function renderDiscountCell(row: SalesLineItemRow) {
   }
 }
 
+// Customer/coach portal "Discount Code" column -- deliberately simpler
+// than the staff "Discount" column above: reuses the SAME discountCodes
+// data and the same per-code label (automatic vs. a named code), but
+// never shows an order-level amount and never distinguishes "lookup
+// failed" from "confirmed no discount" -- both render as a plain dash,
+// per the approved spec ("display a dash when no discount code exists").
+function renderDiscountCodeCell(row: { discountCodes?: SalesLineItemDiscount[] }) {
+  const codes = row.discountCodes ?? [];
+  if (codes.length === 0) {
+    return <span className="text-xs text-slate-400">—</span>;
+  }
+  return (
+    <div className="space-y-0.5">
+      {codes.map((discount, index) => (
+        <div key={index} className="font-mono text-xs text-slate-700">
+          {discount.applicationType === "automatic" ? "Automatic discount" : discount.code || "Discount code"}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function SalesLineItemsTable({
   lineItems,
   showDiscounts = false,
+  showDiscountCode = false,
 }: {
   lineItems: SalesLineItemRow[];
   showDiscounts?: boolean;
+  showDiscountCode?: boolean;
 }) {
   if (lineItems.length === 0) {
     return (
@@ -79,6 +103,7 @@ export default function SalesLineItemsTable({
             <th className="px-4 py-3">Item Price</th>
             <th className="px-4 py-3">Total Sale Price</th>
             {showDiscounts && <th className="px-4 py-3">Discount</th>}
+            {showDiscountCode && <th className="px-4 py-3">Discount Code</th>}
           </tr>
         </thead>
 
@@ -98,6 +123,7 @@ export default function SalesLineItemsTable({
                 {formatMoney(row.totalSalePrice)}
               </td>
               {showDiscounts && <td className="px-4 py-3">{renderDiscountCell(row)}</td>}
+              {showDiscountCode && <td className="px-4 py-3">{renderDiscountCodeCell(row)}</td>}
             </tr>
           ))}
         </tbody>
