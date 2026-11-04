@@ -178,15 +178,16 @@ run("SalesLineItemsTable renders via resolveDiscountDisplayState's four states, 
   }
 });
 
-// Updated for the customer-facing "Discount Code" column feature:
-// discountCodes IS now deliberately exposed (code only) -- see
-// scripts/verifySalesDataCustomerDiscountCode.ts. The order-level
-// discountTotal amount and the staff-only discountDisplayState helper
-// remain fully excluded, unchanged.
-run("the customer portal still never references the order-level discount amount or the staff-only discount display helper", () => {
+// Updated for the "Discount Applied" fallback feature: the portal now
+// deliberately imports resolveDiscountDisplayState (lib/discountDisplayState)
+// to derive its two customer-safe fields -- see
+// scripts/verifySalesDataDiscountAppliedFallback.ts, which confirms this
+// reuse never reads or forwards the resolved state's own "total" number.
+// The order-level discountTotal amount itself remains fully excluded,
+// unchanged.
+run("the customer portal still never references the order-level discount amount", () => {
   const source = readSource("lib/customerPortalSalesData.ts");
   assert.equal(source.includes("discountTotal"), false);
-  assert.equal(source.includes("discountDisplayState"), false);
 });
 
 if (process.exitCode === 1) {

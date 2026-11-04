@@ -51,25 +51,47 @@ function renderDiscountCell(row: SalesLineItemRow) {
 }
 
 // Customer/coach portal "Discount Code" column -- deliberately simpler
-// than the staff "Discount" column above: reuses the SAME discountCodes
-// data and the same per-code label (automatic vs. a named code), but
-// never shows an order-level amount and never distinguishes "lookup
-// failed" from "confirmed no discount" -- both render as a plain dash,
-// per the approved spec ("display a dash when no discount code exists").
-function renderDiscountCodeCell(row: { discountCodes?: SalesLineItemDiscount[] }) {
+// than the staff "Discount" column above, and simpler than
+// resolveDiscountDisplayState's own four states: no order-level amount
+// is ever shown. Three visible states, in priority order:
+//   1. discountCodes non-empty -- show each code (or "Automatic
+//      Discount" for an automatic application), same per-code labeling
+//      the staff column uses.
+//   2. discountCodes empty but discountAppliedWithoutCode is true --
+//      "Discount Applied": reliable evidence of a positive discount
+//      exists (shopify_orders.total_discounts > 0), but no code was
+//      captured for it. Never invents or guesses an actual code.
+//   3. Otherwise -- a plain dash. Covers BOTH a confirmed-zero discount
+//      and a genuinely unknown amount alike: "no evidence a discount
+//      was applied" per the approved spec, a deliberately coarser
+//      distinction than the staff column's four states.
+// discountAppliedWithoutCode is computed server-side in
+// lib/customerPortalSalesData.ts via the SAME resolveDiscountDisplayState
+// the staff column uses -- this function never sees or needs the
+// underlying dollar amount at all.
+function renderDiscountCodeCell(row: {
+  discountCodes?: SalesLineItemDiscount[];
+  discountAppliedWithoutCode?: boolean;
+}) {
   const codes = row.discountCodes ?? [];
-  if (codes.length === 0) {
-    return <span className="text-xs text-slate-400">—</span>;
+
+  if (codes.length > 0) {
+    return (
+      <div className="space-y-0.5">
+        {codes.map((discount, index) => (
+          <div key={index} className="font-mono text-xs text-slate-700">
+            {discount.applicationType === "automatic" ? "Automatic Discount" : discount.code || "Discount code"}
+          </div>
+        ))}
+      </div>
+    );
   }
-  return (
-    <div className="space-y-0.5">
-      {codes.map((discount, index) => (
-        <div key={index} className="font-mono text-xs text-slate-700">
-          {discount.applicationType === "automatic" ? "Automatic discount" : discount.code || "Discount code"}
-        </div>
-      ))}
-    </div>
-  );
+
+  if (row.discountAppliedWithoutCode) {
+    return <span className="text-xs text-slate-700">Discount Applied</span>;
+  }
+
+  return <span className="text-xs text-slate-400">—</span>;
 }
 
 export default function SalesLineItemsTable({

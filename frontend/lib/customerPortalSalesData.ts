@@ -4,6 +4,7 @@ import { resolvePortalStoreId, recordPortalAccess } from "@/lib/portalAccess";
 import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
 import { buildStoreSalesData, buildStorePayouts } from "@/lib/salesCalculations";
 import { isFundraisingHiddenForStore } from "@/lib/fundraisingDisplayOverrides";
+import { resolveDiscountDisplayState } from "@/lib/discountDisplayState";
 import type { DateRange, SalesLineItemDiscount, StoreSalesData } from "@/lib/onlineStoreSalesTypes";
 
 // Phase 4D, Slice 3: the customer portal's single data entry point.
@@ -91,6 +92,15 @@ export type CustomerLineItem = {
   // discount" -- both display as a dash. See
   // components/SalesLineItemsTable.tsx's renderDiscountCodeCell.
   discountCodes: SalesLineItemDiscount[];
+  // Third deliberate, approved exception: a plain BOOLEAN signal only --
+  // never the order-level discount figure itself -- so the customer
+  // view can show "Discount Applied" instead of a dash when a real
+  // discount is known to have been applied but its code wasn't
+  // captured. Derived via the same resolveDiscountDisplayState() the
+  // staff column already uses (kind === "code-unavailable"); this file
+  // only ever carries the resulting boolean, never the number that
+  // decision was based on.
+  discountAppliedWithoutCode: boolean;
   title: string | null;
   quantity: number;
   itemNumber: string | null;
@@ -145,18 +155,26 @@ function toCustomerSalesData(data: StoreSalesData): CustomerSalesData {
       lifetimeFundraiserEarned: data.summary.lifetimeFundraiserEarned,
       totalDiscounts: data.summary.totalDiscounts,
     },
-    lineItems: data.lineItems.map((item) => ({
-      lineItemId: item.lineItemId,
-      orderNumber: item.orderNumber,
-      orderDate: item.orderDate,
-      lastName: item.lastName,
-      discountCodes: item.discountCodes ?? [],
-      title: item.title,
-      quantity: item.quantity,
-      itemNumber: item.itemNumber,
-      price: item.price,
-      totalSalePrice: item.totalSalePrice,
-    })),
+    lineItems: data.lineItems.map((item) => {
+      // resolveDiscountDisplayState() is the same decision logic the
+      // staff column already relies on -- reused here only to derive
+      // the two customer-safe fields below; its "total" number is never
+      // read or forwarded anywhere in this function.
+      const discountState = resolveDiscountDisplayState(item);
+      return {
+        lineItemId: item.lineItemId,
+        orderNumber: item.orderNumber,
+        orderDate: item.orderDate,
+        lastName: item.lastName,
+        discountCodes: discountState.kind === "codes" ? discountState.codes : [],
+        discountAppliedWithoutCode: discountState.kind === "code-unavailable",
+        title: item.title,
+        quantity: item.quantity,
+        itemNumber: item.itemNumber,
+        price: item.price,
+        totalSalePrice: item.totalSalePrice,
+      };
+    }),
     bestSellers: data.bestSellers.map((row) => ({
       shopifyProductId: row.shopifyProductId,
       title: row.title,
