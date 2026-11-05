@@ -326,9 +326,13 @@ async function upsertOrder(
 }
 
 // Batch-matches team_tags parsed from this order's line items against
-// online_stores.vendor_team_tag in one query, to avoid an N+1 lookup when an
-// order has multiple items for the same team. No online_stores row is ever
-// auto-created here -- unmatched tags are simply left unmatched.
+// BOTH online_stores.vendor_team_tag (the primary tag) AND
+// online_store_vendor_tag_aliases.tag (additional tags mapped to the
+// same store -- see database/migrations/
+// 20261105_add_online_store_vendor_tag_aliases.sql), in two queries
+// rather than one, to avoid an N+1 lookup when an order has multiple
+// items for the same team. No online_stores row is ever auto-created
+// here -- unmatched tags are simply left unmatched.
 async function matchOnlineStores(
   client: SupabaseClient,
   teamTags: string[]
@@ -336,18 +340,33 @@ async function matchOnlineStores(
   const uniqueTags = Array.from(new Set(teamTags.filter((tag): tag is string => Boolean(tag))));
   if (uniqueTags.length === 0) return new Map();
 
-  const { data, error } = await client
-    .from("online_stores")
-    .select("id, vendor_team_tag")
-    .in("vendor_team_tag", uniqueTags);
+  const [primaryResult, aliasResult] = await Promise.all([
+    client.from("online_stores").select("id, vendor_team_tag").in("vendor_team_tag", uniqueTags),
+    client
+      .from("online_store_vendor_tag_aliases")
+      .select("online_store_id, tag")
+      .in("tag", uniqueTags),
+  ]);
 
-  if (error) {
-    throw new Error(`Online store lookup failed: ${error.message}`);
+  if (primaryResult.error) {
+    throw new Error(`Online store lookup failed: ${primaryResult.error.message}`);
+  }
+  if (aliasResult.error) {
+    throw new Error(`Online store alias lookup failed: ${aliasResult.error.message}`);
   }
 
   const map = new Map<string, number>();
-  for (const store of data ?? []) {
+  for (const store of primaryResult.data ?? []) {
     if (store.vendor_team_tag) map.set(store.vendor_team_tag, store.id);
+  }
+  // A tag can never legitimately match both a primary tag and an alias
+  // (or two different stores) -- the database enforces this with the
+  // cross-table uniqueness triggers in the migration above. If that
+  // invariant is ever violated anyway (a bug, or a manual DB edit that
+  // bypassed the triggers), a primary-tag match already in the map wins
+  // -- an alias never silently overwrites it.
+  for (const alias of aliasResult.data ?? []) {
+    if (alias.tag && !map.has(alias.tag)) map.set(alias.tag, alias.online_store_id);
   }
   return map;
 }

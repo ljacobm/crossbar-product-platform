@@ -1,7 +1,9 @@
 import { getOnlineStoreById } from "@/lib/onlineStoreData";
 import { getPortalLinkStatus } from "@/lib/onlineStorePortalData";
 import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
+import { getVendorTagAliases } from "@/lib/onlineStoreVendorTagAliases";
 import PortalLinkSection from "@/components/PortalLinkSection";
+import VendorTagAliasesSection from "@/components/VendorTagAliasesSection";
 
 export default async function StoreOverviewPage({
   params,
@@ -20,6 +22,7 @@ export default async function StoreOverviewPage({
   if (!store) return null;
 
   const portalLinkStatus = await getPortalLinkStatus(store.id);
+  const vendorTagAliases = await getVendorTagAliases(store.id);
 
   return (
     <>
@@ -51,6 +54,12 @@ export default async function StoreOverviewPage({
           </div>
         </dl>
       </div>
+
+      <VendorTagAliasesSection
+        storeId={store.id}
+        primaryTag={store.vendor_team_tag}
+        initialAliases={vendorTagAliases}
+      />
 
       <PortalLinkSection
         storeId={store.id}
