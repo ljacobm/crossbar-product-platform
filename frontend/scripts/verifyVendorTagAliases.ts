@@ -203,6 +203,56 @@ run("the Online Store Overview page fetches and renders VendorTagAliasesSection 
   assert.ok(source.includes("primaryTag={store.vendor_team_tag}"));
 });
 
+// =============================================================================
+// Staging crash fix: a staff member opening /stores/:id/overview got Next's
+// generic "server error" page instead of the Overview page -- traced (by
+// code review; no Vercel runtime logs or staging DB access were available --
+// see the implementation report for exactly what log output would confirm
+// the underlying DB-level cause) to getVendorTagAliases() being the one new,
+// unguarded call added to this page in the vendor-tag-alias feature. Fix:
+// its failure is now contained at the page level, the same "a failed lookup
+// must not crash the page" principle already used for the Sales Data
+// discount lookup in lib/salesCalculations.ts.
+// =============================================================================
+
+run("getVendorTagAliases() is called inside a try/catch in the Overview page -- its failure cannot crash the whole page", () => {
+  const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/overview/page.tsx"));
+  const tryIndex = source.indexOf("try {");
+  const callIndex = source.indexOf("await getVendorTagAliases(store.id)");
+  const catchIndex = source.indexOf("} catch (err) {");
+  assert.ok(tryIndex !== -1 && callIndex !== -1 && catchIndex !== -1, "expected a try/catch around getVendorTagAliases");
+  assert.ok(tryIndex < callIndex, "the call must be inside the try block");
+  assert.ok(callIndex < catchIndex, "the catch block must come after the call");
+});
+
+run("a failed vendor tag alias lookup is logged via console.error, not swallowed silently", () => {
+  const source = readSource("app/(internal)/stores/[storeId]/overview/page.tsx");
+  const catchMatch = source.match(/\}\s*catch\s*\(err\)\s*\{([\s\S]*?)\n  \}/);
+  assert.ok(catchMatch, "expected to find the vendor tag alias lookup's catch block");
+  assert.ok(catchMatch![1].includes("console.error("), "expected the catch block to log the error");
+});
+
+run("getOnlineStoreById and getPortalLinkStatus are NOT inside that same try/catch -- a real failure to load the store or its portal status must still surface as a page-level error, unlike the vendor tag alias lookup", () => {
+  const source = stripLineComments(readSource("app/(internal)/stores/[storeId]/overview/page.tsx"));
+  const tryIndex = source.indexOf("try {");
+  const storeCallIndex = source.indexOf("getOnlineStoreById(");
+  const portalCallIndex = source.indexOf("getPortalLinkStatus(");
+  assert.ok(tryIndex !== -1 && storeCallIndex !== -1 && portalCallIndex !== -1);
+  assert.ok(storeCallIndex < tryIndex, "getOnlineStoreById must run before (outside) the try block");
+  assert.ok(portalCallIndex < tryIndex, "getPortalLinkStatus must run before (outside) the try block");
+});
+
+run("VendorTagAliasesSection distinguishes a failed load from a genuinely empty alias list -- it never shows 'No aliases yet.' after a failed lookup", () => {
+  const source = readSource("components/VendorTagAliasesSection.tsx");
+  assert.ok(source.includes("loadFailed"), "expected a loadFailed prop");
+  assert.ok(source.includes('"No aliases yet."'));
+  // The empty-list branch must itself branch on the load-error state,
+  // not show the confirmed-empty message unconditionally.
+  const emptyBranchMatch = source.match(/aliases\.length === 0 \? \(([\s\S]*?)\) : \(/);
+  assert.ok(emptyBranchMatch, "expected to find the empty-aliases-list branch");
+  assert.ok(emptyBranchMatch![1].includes("loadError"));
+});
+
 if (process.exitCode === 1) {
   console.error("\nOne or more checks failed.");
 } else {

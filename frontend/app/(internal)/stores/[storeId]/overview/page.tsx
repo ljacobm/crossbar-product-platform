@@ -1,7 +1,7 @@
 import { getOnlineStoreById } from "@/lib/onlineStoreData";
 import { getPortalLinkStatus } from "@/lib/onlineStorePortalData";
 import { isPortalGenerationEnabled } from "@/lib/portalFeatureFlag";
-import { getVendorTagAliases } from "@/lib/onlineStoreVendorTagAliases";
+import { getVendorTagAliases, type VendorTagAlias } from "@/lib/onlineStoreVendorTagAliases";
 import PortalLinkSection from "@/components/PortalLinkSection";
 import VendorTagAliasesSection from "@/components/VendorTagAliasesSection";
 
@@ -22,7 +22,32 @@ export default async function StoreOverviewPage({
   if (!store) return null;
 
   const portalLinkStatus = await getPortalLinkStatus(store.id);
-  const vendorTagAliases = await getVendorTagAliases(store.id);
+
+  // The Shopify Vendor Tags section is new, additive, and strictly
+  // optional for this page -- Store Information and the Customer Portal
+  // section below have nothing to do with it and must keep rendering
+  // normally regardless of whether this lookup succeeds. Caught here,
+  // at the page level (rather than inside getVendorTagAliases() itself),
+  // because this is the one place that already treats each section of
+  // this page as independently renderable -- getOnlineStoreById()/
+  // getPortalLinkStatus() above are NOT wrapped the same way: a failure
+  // to load the store itself, or its portal link status, is still
+  // treated as a real page-level error, same as before this section
+  // existed. Mirrors the same "a failed lookup must not crash the page"
+  // principle already applied to the Sales Data discount lookup in
+  // lib/salesCalculations.ts -- logged via console.error (so the actual
+  // error reaches server/Vercel logs), never swallowed silently.
+  let vendorTagAliases: VendorTagAlias[] = [];
+  let vendorTagAliasesLoadFailed = false;
+  try {
+    vendorTagAliases = await getVendorTagAliases(store.id);
+  } catch (err) {
+    console.error(
+      `Failed to load vendor tag aliases for store ${store.id} (Overview page still renders without this section's data):`,
+      err
+    );
+    vendorTagAliasesLoadFailed = true;
+  }
 
   return (
     <>
@@ -59,6 +84,7 @@ export default async function StoreOverviewPage({
         storeId={store.id}
         primaryTag={store.vendor_team_tag}
         initialAliases={vendorTagAliases}
+        loadFailed={vendorTagAliasesLoadFailed}
       />
 
       <PortalLinkSection

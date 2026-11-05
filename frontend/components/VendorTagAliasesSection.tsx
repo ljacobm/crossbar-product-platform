@@ -36,15 +36,36 @@ export default function VendorTagAliasesSection({
   storeId,
   primaryTag,
   initialAliases,
+  loadFailed = false,
 }: {
   storeId: number;
   primaryTag: string | null;
   initialAliases: VendorTagAlias[];
+  // True when the page's initial server-side fetch of this store's
+  // aliases failed (see app/(internal)/stores/[storeId]/overview/page.tsx)
+  // -- initialAliases is always [] in that case, but that must never be
+  // shown as "No aliases yet.": that phrase means something confirmed,
+  // and showing it after a failed lookup could lead staff to add a
+  // duplicate of an alias that actually already exists.
+  loadFailed?: boolean;
 }) {
   const [aliases, setAliases] = useState<VendorTagAlias[]>(initialAliases);
   const [newTag, setNewTag] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(loadFailed);
   const [isPending, startTransition] = useTransition();
+
+  function runRetryLoad() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        setAliases(await getVendorTagAliases(storeId));
+        setLoadError(false);
+      } catch {
+        setLoadError(true);
+      }
+    });
+  }
 
   function runAdd() {
     const tagToAdd = newTag;
@@ -94,13 +115,29 @@ export default function VendorTagAliasesSection({
         </p>
       )}
 
+      {loadError && (
+        <div className="mt-4 flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>Couldn&apos;t load this store&apos;s aliases right now -- the list below may be incomplete.</span>
+          <button
+            type="button"
+            onClick={runRetryLoad}
+            disabled={isPending}
+            className="flex-shrink-0 font-medium underline hover:no-underline disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       <div className="mt-4">
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
           Aliases ({aliases.length})
         </p>
 
         {aliases.length === 0 ? (
-          <p className="text-sm text-slate-400">No aliases yet.</p>
+          <p className="text-sm text-slate-400">
+            {loadError ? "Unable to determine aliases right now." : "No aliases yet."}
+          </p>
         ) : (
           <ul className="space-y-2">
             {aliases.map((alias) => (
