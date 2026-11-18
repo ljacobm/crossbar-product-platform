@@ -2,12 +2,16 @@ import Link from "next/link";
 
 function buildPageHref(
   basePath: string,
-  params: Record<string, string | undefined>,
+  params: Record<string, string | string[] | undefined>,
   page: number
 ) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value) search.set(key, value);
+    if (Array.isArray(value)) {
+      for (const v of value) search.append(key, v);
+    } else if (value) {
+      search.set(key, value);
+    }
   }
   if (page > 1) search.set("page", String(page));
   const qs = search.toString();
@@ -25,7 +29,7 @@ export default function ProductPagination({
   page: number;
   total: number;
   pageSize: number;
-  preservedParams: Record<string, string | undefined>;
+  preservedParams: Record<string, string | string[] | undefined>;
 }) {
   if (total <= pageSize) return null;
 

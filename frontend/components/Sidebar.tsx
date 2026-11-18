@@ -52,9 +52,13 @@ const navigationGroups: NavigationGroup[] = [
   {
     label: "Team Stores",
     icon: Store,
-    routePrefixes: ["/stores", "/team-stores", "/teams", "/coaches"],
+    routePrefixes: ["/stores", "/team-stores", "/teams", "/coaches", "/approvals"],
     children: [
       { label: "Stores", href: "/stores" },
+      // "Approved Styles" removed -- that management UI now lives on
+      // the existing Catalog → Products → Team Store Ready tab (see
+      // app/(internal)/products/page.tsx) rather than its own page.
+      { label: "Approval Queue", href: "/approvals" },
       { label: "Teams", comingSoon: true },
       { label: "Coaches", comingSoon: true },
     ],

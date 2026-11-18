@@ -10,11 +10,15 @@ export default function ProductTableClient({
   disableRowNavigation = false,
   bulkBarMode = "catalog",
   collectionId,
+  approvedCatalogStyleIdsByProductId,
 }: {
   products: Product[];
   disableRowNavigation?: boolean;
   bulkBarMode?: "catalog" | "add-to-collection";
   collectionId?: number;
+  // Team Store Ready tab ONLY -- see ProductRow's own comment. Every
+  // other caller leaves this undefined.
+  approvedCatalogStyleIdsByProductId?: Record<number, number[]>;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
@@ -82,6 +86,7 @@ export default function ProductTableClient({
                 selected={selected.has(product.id)}
                 onToggleSelect={() => toggleOne(product.id)}
                 disableRowNavigation={disableRowNavigation}
+                approvedCatalogStyleIds={approvedCatalogStyleIdsByProductId?.[product.id]}
               />
             ))}
           </tbody>

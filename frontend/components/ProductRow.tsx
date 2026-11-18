@@ -1,6 +1,8 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import WorkflowStatusBadge from "@/components/WorkflowStatusBadge";
+import { removeCatalogProductFromTeamStores } from "@/lib/approvedCatalogStyleData";
 
 type CatalogSettingsRow = {
   workflow_status: string;
@@ -34,7 +36,16 @@ function selectThumbnail(images: Product["product_images"]) {
   const hero = active.find((image) => image.image_type === "hero");
   if (hero) return hero;
 
-  return [...active].sort(
+  // Never fall back to a swatch-type row here -- a tiny 35x35 SanMar
+  // color swatch gif must never be stretched into this list
+  // thumbnail's slot just because it happens to sort first. Swatches
+  // and product photos are kept logically separate everywhere in this
+  // codebase purely by this image_type check; this is the staff
+  // Catalog Manager's own equivalent of the same guard already applied
+  // in lib/onlineStoreCatalogCustomerData.ts's buildCatalogWorkspace().
+  const nonSwatch = active.filter((image) => image.image_type !== "swatch");
+
+  return [...nonSwatch].sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id
   )[0];
 }
@@ -81,14 +92,39 @@ export default function ProductRow({
   selected,
   onToggleSelect,
   disableRowNavigation = false,
+  approvedCatalogStyleIds,
 }: {
   product: Product;
   selected?: boolean;
   onToggleSelect?: () => void;
   disableRowNavigation?: boolean;
+  // Team Store Ready tab ONLY -- see app/(internal)/products/page.tsx
+  // and components/ProductTable.tsx. Every other caller of ProductRow
+  // (the main Catalog Manager on any other view, and the Collection
+  // product picker via CollectionProductSelectorTable.tsx) never
+  // passes this prop, so the "Remove from Team Stores" button below
+  // never renders for them -- this is the only thing distinguishing
+  // "team-store-ready" row rendering from every other view, by design.
+  approvedCatalogStyleIds?: number[];
 }) {
   const thumbnail = selectThumbnail(product.product_images ?? []);
   const settings = resolveSettings(product);
+  const [isPending, startTransition] = useTransition();
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  function handleRemoveFromTeamStores() {
+    if (!approvedCatalogStyleIds || approvedCatalogStyleIds.length === 0) return;
+    setConfirmRemove(false);
+    setRemoveError(null);
+    startTransition(async () => {
+      try {
+        await removeCatalogProductFromTeamStores(approvedCatalogStyleIds);
+      } catch (err) {
+        setRemoveError(err instanceof Error ? err.message : "Failed to remove.");
+      }
+    });
+  }
 
   return (
     <tr
@@ -173,22 +209,59 @@ export default function ProductRow({
         </div>
       </td>
 
-      <td className="px-4 py-4 text-right">
-        {disableRowNavigation ? (
-          <a
-            href={`/products/${product.id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            title="Open product in a new tab"
-            aria-label={`Open ${product.display_name} in a new tab`}
-            className="text-sm text-slate-400 hover:text-[#860132]"
-          >
-            ↗
-          </a>
-        ) : (
-          <span className="text-lg text-slate-400">›</span>
-        )}
+      <td className="px-4 py-4 text-right" onClick={(e) => approvedCatalogStyleIds && e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-2">
+          {approvedCatalogStyleIds && approvedCatalogStyleIds.length > 0 && (
+            <div className="text-left">
+              {removeError && <p className="mb-1 text-xs text-red-600">{removeError}</p>}
+              {confirmRemove ? (
+                <span className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={handleRemoveFromTeamStores}
+                    className="rounded-lg bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {isPending ? "Removing..." : "Confirm"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRemove(false)}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => setConfirmRemove(true)}
+                  title="Removes this product's eligibility for future customer team store selections only -- does not archive or change the underlying product."
+                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                >
+                  Remove from Team Stores
+                </button>
+              )}
+            </div>
+          )}
+
+          {disableRowNavigation ? (
+            <a
+              href={`/products/${product.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title="Open product in a new tab"
+              aria-label={`Open ${product.display_name} in a new tab`}
+              className="text-sm text-slate-400 hover:text-[#860132]"
+            >
+              ↗
+            </a>
+          ) : (
+            <span className="text-lg text-slate-400">›</span>
+          )}
+        </div>
       </td>
     </tr>
   );

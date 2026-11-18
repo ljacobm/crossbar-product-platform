@@ -11,6 +11,7 @@ import {
   type ProductQueryFilters,
   type ProductQueryResult,
 } from "@/lib/catalogViews";
+import { getApprovedStyleCatalogProductIds } from "@/lib/approvedCatalogStyleData";
 
 // Server-only read path for the shared catalog_products query builder --
 // Phase B, slice 3b of the post-Stage-1 RLS follow-up (see
@@ -64,10 +65,19 @@ async function getArchivedProductIds(): Promise<number[]> {
 
 // Fixed counts per view, ignoring any active search/brand/category/workflow
 // refinements -- the tab badge counts, not the filtered result count.
+//
+// "team-store-ready" here ALWAYS reflects approved_catalog_styles, not
+// team_store_enabled -- this function's only caller is
+// app/(internal)/products/page.tsx (CatalogViewTabs' own badge counts),
+// which is exactly the one place that now uses the approved-styles
+// source for this view (see lib/catalogViews.ts's own comment on
+// applyCatalogView for the full two-meanings explanation). Unlike
+// queryProducts() below, there is no other existing caller of this
+// function to preserve old behavior for.
 export async function getCatalogViewCounts(): Promise<Record<CatalogViewId, number>> {
   await requireStaffSession();
 
-  const [all, review, approved, websiteReady, teamStoreReady, inactive, archivedWhileActive] =
+  const [all, review, approved, websiteReady, teamStoreReadyIds, inactive, archivedWhileActive] =
     await Promise.all([
       supabaseAdmin.from("catalog_products").select("id", { count: "exact", head: true }).eq("active", true),
       supabaseAdmin
@@ -85,11 +95,7 @@ export async function getCatalogViewCounts(): Promise<Record<CatalogViewId, numb
         .select("id, catalog_settings!inner(website_ready)", { count: "exact", head: true })
         .eq("active", true)
         .eq("catalog_settings.website_ready", true),
-      supabaseAdmin
-        .from("catalog_products")
-        .select("id, catalog_settings!inner(team_store_enabled)", { count: "exact", head: true })
-        .eq("active", true)
-        .eq("catalog_settings.team_store_enabled", true),
+      getApprovedStyleCatalogProductIds(),
       supabaseAdmin.from("catalog_products").select("id", { count: "exact", head: true }).eq("active", false),
       supabaseAdmin
         .from("catalog_products")
@@ -103,7 +109,7 @@ export async function getCatalogViewCounts(): Promise<Record<CatalogViewId, numb
     review: review.count ?? 0,
     approved: approved.count ?? 0,
     "website-ready": websiteReady.count ?? 0,
-    "team-store-ready": teamStoreReady.count ?? 0,
+    "team-store-ready": teamStoreReadyIds.length,
     archived: (inactive.count ?? 0) + (archivedWhileActive.count ?? 0),
   };
 }
@@ -129,6 +135,7 @@ export async function queryProducts(filters: ProductQueryFilters): Promise<Produ
     excludeIds = [],
     page = 1,
     pageSize = 50,
+    useApprovedStyleSource = false,
   } = filters;
 
   let request = supabaseAdmin
@@ -175,6 +182,19 @@ export async function queryProducts(filters: ProductQueryFilters): Promise<Produ
   } else if (view === "archived") {
     const archivedIds = await getArchivedProductIds();
     request = request.in("id", archivedIds.length > 0 ? archivedIds : [-1]);
+  } else if (view === "team-store-ready" && useApprovedStyleSource) {
+    // Online Store Builder integration: the ONLY caller that passes
+    // this flag is the Catalog Manager's own Team Store Ready tab (see
+    // ProductTable.tsx) -- every other caller (e.g. the Collection
+    // product picker, via CollectionProductSelectorTable.tsx) never
+    // sets it and falls through to applyCatalogView's unchanged,
+    // team_store_enabled-based case below. Same two-step ID-list
+    // pattern as the "archived" branch above, for the same reason
+    // (PostgREST can't combine a base-table column with a column
+    // reached through a different embedded relationship in one
+    // filter expression).
+    const approvedIds = await getApprovedStyleCatalogProductIds();
+    request = request.eq("active", true).in("id", approvedIds.length > 0 ? approvedIds : [-1]);
   } else {
     request = applyCatalogView(request, view);
   }

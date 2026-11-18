@@ -64,7 +64,12 @@ export const CATALOG_VIEW_EMPTY_MESSAGES: Record<CatalogViewId, string> = {
   review: "No products currently need review.",
   approved: "No products have been approved for the Crossbar catalog yet.",
   "website-ready": "No products are marked website ready yet.",
-  "team-store-ready": "No products are currently enabled for team stores.",
+  // Online Store Builder integration: on the Catalog Manager's own
+  // Team Store Ready tab (the only caller that opts into
+  // useApprovedStyleSource -- see applyCatalogView's own comment
+  // below), this view is scoped by approved_catalog_styles, not
+  // team_store_enabled -- the message reflects that.
+  "team-store-ready": "No styles are currently approved for customer team stores.",
   archived: "No archived products.",
 };
 
@@ -78,6 +83,26 @@ export const CATALOG_VIEW_EMPTY_MESSAGES: Record<CatalogViewId, string> = {
 // via getArchivedProductIds() instead, which fetches the two disjoint ID
 // sets (active=false, and active=true AND workflow=Archived) and unions
 // them client-side for an .in("id", ...) filter.
+//
+// "team-store-ready" -- TWO DELIBERATELY SEPARATE MEANINGS, by design:
+// this function's own case below ALWAYS uses catalog_settings
+// .team_store_enabled (the original, pre-existing staff workflow flag --
+// unchanged, still what the Collection product picker's "Team Store
+// Ready" preset and every other caller of queryProducts() that doesn't
+// opt in continue to see). The Catalog Manager's OWN Team Store Ready
+// tab (app/(internal)/products/page.tsx, via ProductTable.tsx) instead
+// passes `useApprovedStyleSource: true` to queryProducts(), which
+// handles "team-store-ready" with a completely different, ID-list-based
+// scope (approved_catalog_styles, via
+// lib/approvedCatalogStyleData.ts's getApprovedStyleCatalogProductIds())
+// BEFORE ever reaching this function -- see queryProducts() in
+// lib/catalogProductData.ts. The two are NEVER synchronized: enabling
+// team_store_enabled on a product does not add it to
+// approved_catalog_styles, and vice versa. This is intentional --
+// team_store_enabled remains a general staff "ready for team stores in
+// principle" workflow marker, while approved_catalog_styles is the one
+// authoritative source of which SanMar styles customers can actually
+// select in the Online Store Builder's customer-facing catalog.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function applyCatalogView(request: any, view: Exclude<CatalogViewId, "archived" | "all">) {
   switch (view) {
@@ -112,6 +137,13 @@ export type ProductQueryFilters = {
   excludeIds?: number[];
   page?: number;
   pageSize?: number;
+  // Online Store Builder integration: when true AND view ===
+  // "team-store-ready", queryProducts() scopes by approved_catalog_styles
+  // instead of catalog_settings.team_store_enabled -- see
+  // applyCatalogView's own comment above for the full explanation. Has
+  // no effect for any other view. Defaults to false/undefined so every
+  // existing caller (e.g. the Collection product picker) is unaffected.
+  useApprovedStyleSource?: boolean;
 };
 
 export type ProductQueryResult = {

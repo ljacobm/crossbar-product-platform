@@ -1,0 +1,38 @@
+-- Task 2 (Online Store Catalog Builder): prevent overlapping pending
+-- catalog submissions for the same online store.
+--
+-- A read-before-write check ("is there already a pending submission
+-- for this store?") is NOT race-safe under concurrent requests -- a
+-- double-click, or two open tabs, could both pass the check before
+-- either INSERT commits. A partial unique index enforces this
+-- atomically at the database level instead: Postgres guarantees only
+-- one row with a blocking status can exist per online_store_id at any
+-- time, and a second concurrent INSERT attempt fails outright with a
+-- unique_violation (error code 23505) rather than silently creating a
+-- duplicate. The application layer
+-- (frontend/lib/onlineStoreCatalogCustomerData.ts's
+-- submitCustomerCatalogForReview) catches that specific error code via
+-- frontend/lib/postgresErrors.ts's isUniqueViolationError() and reports
+-- "already-pending" to the customer -- it never relies on a prior
+-- SELECT to decide whether it's safe to insert; the INSERT itself is
+-- the check.
+--
+-- Only 'pending' blocks a new submission. Checked directly against
+-- recomputeSubmissionStatus()'s actual implementation (now
+-- decide_catalog_submission_item()'s SQL equivalent, see
+-- 20261118_add_decide_catalog_submission_item_rpc.sql): a submission's
+-- status only ever returns to 'pending' while at least one of its
+-- items is undecided -- the moment every item has a decision, status
+-- becomes a TERMINAL value, one of 'approved', 'rejected', or
+-- 'partially_approved' (fully decided, mixed outcome). An earlier
+-- version of this migration's comment assumed 'partially_approved'
+-- meant "still has an item awaiting review," which does not match
+-- that logic -- a fully-decided mixed-outcome submission is just as
+-- terminal as a fully-approved or fully-rejected one, and should not
+-- block a genuine new submission (e.g. the customer re-requesting a
+-- color that was rejected) any more than those do.
+--
+-- Purely additive: no existing row is read, modified, or deleted.
+create unique index if not exists online_store_catalog_submissions_one_active_per_store
+  on public.online_store_catalog_submissions (online_store_id)
+  where status = 'pending';

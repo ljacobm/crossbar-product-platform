@@ -2,6 +2,7 @@ import ProductTableClient from "@/components/ProductTableClient";
 import ProductPagination from "@/components/ProductPagination";
 import { CATALOG_VIEW_EMPTY_MESSAGES, type CatalogViewId } from "@/lib/catalogViews";
 import { queryProducts } from "@/lib/catalogProductData";
+import { getApprovedCatalogStyleIdsByCatalogProductId } from "@/lib/approvedCatalogStyleData";
 
 const PAGE_SIZE = 50;
 
@@ -34,7 +35,19 @@ export default async function ProductTable({
     view,
     page,
     pageSize: PAGE_SIZE,
+    // Online Store Builder integration: this is the ONE caller of
+    // queryProducts() that should see the Team Store Ready view scoped
+    // by approved_catalog_styles rather than team_store_enabled -- see
+    // lib/catalogViews.ts's applyCatalogView comment. Harmless no-op
+    // for every other view.
+    useApprovedStyleSource: true,
   });
+
+  // Only fetched on the Team Store Ready tab -- see ProductRow's own
+  // comment on why this prop is the one thing that distinguishes its
+  // rendering here from every other view/caller.
+  const approvedCatalogStyleIdsByProductId =
+    view === "team-store-ready" ? await getApprovedCatalogStyleIdsByCatalogProductId() : undefined;
 
   const hasRefiners = Boolean(query || brand || category || workflow || source);
   const emptyMessage = hasRefiners
@@ -82,6 +95,7 @@ export default async function ProductTable({
         <ProductTableClient
           key={`${view}-${source}-${status}-${query}-${brand}-${category}-${workflow}-${page}`}
           products={products}
+          approvedCatalogStyleIdsByProductId={approvedCatalogStyleIdsByProductId}
         />
       )}
 

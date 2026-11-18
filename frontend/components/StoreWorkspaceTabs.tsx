@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { label: "Overview", segment: "overview" },
   { label: "Sales Data", segment: "sales" },
+  { label: "Catalog", segment: "catalog" },
+  { label: "Approvals", segment: "approvals" },
 ] as const;
 
 export default function StoreWorkspaceTabs({ storeId }: { storeId: number }) {
