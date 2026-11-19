@@ -24,7 +24,9 @@ export async function getOnlineStores(query?: string): Promise<OnlineStore[]> {
 
   let request = supabaseAdmin
     .from("online_stores")
-    .select("id, name, slug, vendor_team_tag, active, fundraiser_rate, created_at, updated_at")
+    .select(
+      "id, name, slug, vendor_team_tag, active, fundraiser_rate, organization_type, sport, contact_name, contact_email, contact_phone, notes, created_at, updated_at"
+    )
     .order("name", { ascending: true });
 
   if (query && query.trim()) {
@@ -48,7 +50,9 @@ export async function getOnlineStoreById(id: number): Promise<OnlineStore | null
 
   const { data, error } = await supabaseAdmin
     .from("online_stores")
-    .select("id, name, slug, vendor_team_tag, active, fundraiser_rate, created_at, updated_at")
+    .select(
+      "id, name, slug, vendor_team_tag, active, fundraiser_rate, organization_type, sport, contact_name, contact_email, contact_phone, notes, created_at, updated_at"
+    )
     .eq("id", id)
     .maybeSingle();
 

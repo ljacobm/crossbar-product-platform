@@ -27,11 +27,19 @@ export default async function StoresPage({
 
           <div className="p-8">
             <div className="rounded-xl bg-white p-6 shadow">
-              <div className="mb-6">
-                <h3 className="text-xl font-semibold">Online Stores</h3>
-                <p className="text-sm text-gray-500">
-                  Search and open a store&apos;s workspace.
-                </p>
+              <div className="mb-6 flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-semibold">Online Stores</h3>
+                  <p className="text-sm text-gray-500">
+                    Search and open a store&apos;s workspace.
+                  </p>
+                </div>
+                <a
+                  href="/stores/new"
+                  className="shrink-0 rounded-lg bg-[#860132] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                >
+                  + Add Store
+                </a>
               </div>
 
               <SearchBar placeholder="Search stores by name or team tag..." basePath="/stores" />
