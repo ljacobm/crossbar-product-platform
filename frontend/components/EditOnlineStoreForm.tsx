@@ -27,9 +27,15 @@ function SubmitButton() {
 export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
   const updateWithId = updateOnlineStore.bind(null, store.id);
   const [state, formAction] = useActionState(updateWithId, initialState);
+  const values = state?.values;
+
+  // Same remount-on-change technique as AddOnlineStoreForm.tsx -- see
+  // its comment. Falls back to the store's current persisted value
+  // (not empty) whenever no failed submission has happened yet.
+  const formKey = values ? JSON.stringify(values) : "initial";
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form key={formKey} action={formAction} className="space-y-6">
       {state?.error && (
         <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {state.error}
@@ -42,7 +48,7 @@ export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
           type="text"
           name="name"
           required
-          defaultValue={store.name}
+          defaultValue={values?.name ?? store.name}
           className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
         />
         <p className="mt-1 text-xs text-slate-500">
@@ -58,7 +64,7 @@ export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
           <input
             type="text"
             name="vendor_team_tag"
-            defaultValue={store.vendor_team_tag ?? ""}
+            defaultValue={values?.vendorTeamTag ?? store.vendor_team_tag ?? ""}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
           <p className="mt-1 text-xs text-slate-500">
@@ -78,7 +84,7 @@ export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
             min={0}
             max={100}
             step="0.01"
-            defaultValue={store.fundraiser_rate * 100}
+            defaultValue={values?.fundraiserRatePercent || store.fundraiser_rate * 100}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
           <p className="mt-1 text-xs text-slate-500">0 to 100, inclusive.</p>
@@ -91,7 +97,7 @@ export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
           <input
             type="text"
             name="organization_type"
-            defaultValue={store.organization_type ?? ""}
+            defaultValue={values?.organizationType ?? store.organization_type ?? ""}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
         </div>
@@ -101,7 +107,7 @@ export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
           <input
             type="text"
             name="sport"
-            defaultValue={store.sport ?? ""}
+            defaultValue={values?.sport ?? store.sport ?? ""}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
         </div>
@@ -111,7 +117,7 @@ export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
           <input
             type="text"
             name="contact_name"
-            defaultValue={store.contact_name ?? ""}
+            defaultValue={values?.contactName ?? store.contact_name ?? ""}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
         </div>
@@ -121,7 +127,7 @@ export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
           <input
             type="email"
             name="contact_email"
-            defaultValue={store.contact_email ?? ""}
+            defaultValue={values?.contactEmail ?? store.contact_email ?? ""}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
         </div>
@@ -131,7 +137,7 @@ export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
           <input
             type="tel"
             name="contact_phone"
-            defaultValue={store.contact_phone ?? ""}
+            defaultValue={values?.contactPhone ?? store.contact_phone ?? ""}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
         </div>
@@ -142,7 +148,7 @@ export default function EditOnlineStoreForm({ store }: { store: OnlineStore }) {
         <textarea
           name="notes"
           rows={4}
-          defaultValue={store.notes ?? ""}
+          defaultValue={values?.notes ?? store.notes ?? ""}
           className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
         />
       </div>

@@ -8,10 +8,15 @@ import {
   validateStoreFields,
   VENDOR_TAG_COLLISION_ERROR,
   VENDOR_TAG_GENERIC_ERROR,
+  type StoreFormInput,
 } from "@/lib/onlineStoreProvisioningLogic";
 
 export type OnlineStoreFormState = {
   error: string | null;
+  // The raw (unvalidated) values as submitted, echoed back only when
+  // error is non-null -- see createOnlineStore's identical comment in
+  // app/(internal)/stores/new/actions.ts.
+  values?: StoreFormInput;
 };
 
 function field(formData: FormData, key: string): string {
@@ -39,7 +44,7 @@ export async function updateOnlineStore(
     return { error: "Invalid store." };
   }
 
-  const result = validateStoreFields({
+  const rawInput: StoreFormInput = {
     name: field(formData, "name"),
     vendorTeamTag: field(formData, "vendor_team_tag"),
     fundraiserRatePercent: field(formData, "fundraiser_rate_percent"),
@@ -49,10 +54,12 @@ export async function updateOnlineStore(
     contactEmail: field(formData, "contact_email"),
     contactPhone: field(formData, "contact_phone"),
     notes: field(formData, "notes"),
-  });
+  };
+
+  const result = validateStoreFields(rawInput);
 
   if (!result.ok) {
-    return { error: result.error };
+    return { error: result.error, values: rawInput };
   }
 
   const { fields } = result;
@@ -77,17 +84,18 @@ export async function updateOnlineStore(
 
   if (error) {
     if (error.code === "23505" && error.message.includes("vendor_team_tag")) {
-      return { error: VENDOR_TAG_COLLISION_ERROR };
+      return { error: VENDOR_TAG_COLLISION_ERROR, values: rawInput };
     }
 
     // Forward-compatibility fallback -- see createOnlineStore's identical
     // comment in app/(internal)/stores/new/actions.ts.
     if (error.message?.includes("vendor_team_tag") || error.message?.includes("vendor tag")) {
-      return { error: VENDOR_TAG_GENERIC_ERROR };
+      return { error: VENDOR_TAG_GENERIC_ERROR, values: rawInput };
     }
 
     return {
       error: error.message || "Failed to update store. Please try again.",
+      values: rawInput,
     };
   }
 
@@ -96,7 +104,7 @@ export async function updateOnlineStore(
   // since-deleted or otherwise nonexistent store would silently "succeed"
   // and redirect to a store that no longer exists.
   if (!updated) {
-    return { error: "This store no longer exists." };
+    return { error: "This store no longer exists.", values: rawInput };
   }
 
   revalidatePath("/stores");

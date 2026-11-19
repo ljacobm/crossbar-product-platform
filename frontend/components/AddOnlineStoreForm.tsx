@@ -25,9 +25,18 @@ function SubmitButton() {
 
 export default function AddOnlineStoreForm() {
   const [state, formAction] = useActionState(createOnlineStore, initialState);
+  const values = state?.values;
+
+  // Keying the form on the echoed-back values forces React to remount
+  // the (uncontrolled) inputs below with fresh defaultValues whenever a
+  // new failed submission comes back with different content -- an
+  // uncontrolled input's defaultValue is only applied at mount time, so
+  // without this key a validation/collision error would otherwise clear
+  // the form instead of preserving what staff typed.
+  const formKey = values ? JSON.stringify(values) : "initial";
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form key={formKey} action={formAction} className="space-y-6">
       {state?.error && (
         <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {state.error}
@@ -40,6 +49,7 @@ export default function AddOnlineStoreForm() {
           type="text"
           name="name"
           required
+          defaultValue={values?.name ?? ""}
           placeholder="Lakeside Lacrosse"
           className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
         />
@@ -53,6 +63,7 @@ export default function AddOnlineStoreForm() {
           <input
             type="text"
             name="vendor_team_tag"
+            defaultValue={values?.vendorTeamTag ?? ""}
             placeholder="Lakeside Lacrosse"
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
@@ -74,7 +85,7 @@ export default function AddOnlineStoreForm() {
             min={0}
             max={100}
             step="0.01"
-            defaultValue={20}
+            defaultValue={values?.fundraiserRatePercent || 20}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
           <p className="mt-1 text-xs text-slate-500">0 to 100, inclusive.</p>
@@ -87,6 +98,7 @@ export default function AddOnlineStoreForm() {
           <input
             type="text"
             name="organization_type"
+            defaultValue={values?.organizationType ?? ""}
             placeholder="School, Club, Nonprofit..."
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
@@ -97,6 +109,7 @@ export default function AddOnlineStoreForm() {
           <input
             type="text"
             name="sport"
+            defaultValue={values?.sport ?? ""}
             placeholder="Lacrosse"
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
@@ -107,6 +120,7 @@ export default function AddOnlineStoreForm() {
           <input
             type="text"
             name="contact_name"
+            defaultValue={values?.contactName ?? ""}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
         </div>
@@ -116,6 +130,7 @@ export default function AddOnlineStoreForm() {
           <input
             type="email"
             name="contact_email"
+            defaultValue={values?.contactEmail ?? ""}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
         </div>
@@ -125,6 +140,7 @@ export default function AddOnlineStoreForm() {
           <input
             type="tel"
             name="contact_phone"
+            defaultValue={values?.contactPhone ?? ""}
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
           />
         </div>
@@ -135,6 +151,7 @@ export default function AddOnlineStoreForm() {
         <textarea
           name="notes"
           rows={4}
+          defaultValue={values?.notes ?? ""}
           placeholder="Staff-only context. Never shown to a customer."
           className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
         />

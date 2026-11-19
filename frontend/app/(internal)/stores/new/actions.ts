@@ -10,10 +10,16 @@ import {
   SLUG_COLLISION_ERROR,
   VENDOR_TAG_COLLISION_ERROR,
   VENDOR_TAG_GENERIC_ERROR,
+  type StoreFormInput,
 } from "@/lib/onlineStoreProvisioningLogic";
 
 export type OnlineStoreFormState = {
   error: string | null;
+  // The raw (unvalidated) values as submitted, echoed back only when
+  // error is non-null -- lets the form re-render with what staff
+  // actually typed instead of clearing the form on a validation or
+  // collision error. Never set on success (the action redirects).
+  values?: StoreFormInput;
 };
 
 function field(formData: FormData, key: string): string {
@@ -35,7 +41,7 @@ export async function createOnlineStore(
 ): Promise<OnlineStoreFormState> {
   await requireStaffSession();
 
-  const result = validateStoreFields({
+  const rawInput: StoreFormInput = {
     name: field(formData, "name"),
     vendorTeamTag: field(formData, "vendor_team_tag"),
     fundraiserRatePercent: field(formData, "fundraiser_rate_percent"),
@@ -45,10 +51,12 @@ export async function createOnlineStore(
     contactEmail: field(formData, "contact_email"),
     contactPhone: field(formData, "contact_phone"),
     notes: field(formData, "notes"),
-  });
+  };
+
+  const result = validateStoreFields(rawInput);
 
   if (!result.ok) {
-    return { error: result.error };
+    return { error: result.error, values: rawInput };
   }
 
   const { fields } = result;
@@ -74,12 +82,12 @@ export async function createOnlineStore(
   if (error || !newStore) {
     if (error?.code === "23505") {
       if (error.message.includes("vendor_team_tag")) {
-        return { error: VENDOR_TAG_COLLISION_ERROR };
+        return { error: VENDOR_TAG_COLLISION_ERROR, values: rawInput };
       }
       if (error.message.includes("slug")) {
-        return { error: SLUG_COLLISION_ERROR };
+        return { error: SLUG_COLLISION_ERROR, values: rawInput };
       }
-      return { error: "A store with this information already exists." };
+      return { error: "A store with this information already exists.", values: rawInput };
     }
 
     // Forward-compatibility: database/migrations/
@@ -90,11 +98,12 @@ export async function createOnlineStore(
     // vendor tag column with the same generic, staff-facing message
     // rather than a raw Postgres error string.
     if (error?.message?.includes("vendor_team_tag") || error?.message?.includes("vendor tag")) {
-      return { error: VENDOR_TAG_GENERIC_ERROR };
+      return { error: VENDOR_TAG_GENERIC_ERROR, values: rawInput };
     }
 
     return {
       error: error?.message || "Failed to create store. Please try again.",
+      values: rawInput,
     };
   }
 
